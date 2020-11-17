@@ -3,6 +3,9 @@
   "version": "0.1.4",
   "description": "Opinionated way to generate new npm packages",
   "main": "./dist/index.js",
+  "bin": {
+    "create-vargas-npm": "./dist/index.js"
+  },
   "scripts": {
     "build": "tsc",
     "prebuild": "rimraf ./dist/",
