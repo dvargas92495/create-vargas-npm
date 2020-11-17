@@ -120,7 +120,7 @@ Description for ${projectName}
     stdio: "ignore",
   });
   await sync(
-    `git remote add origin https://github.com/dvargas92495/${projectName}`
+    `git remote add origin https://github.com/dvargas92495/${projectName}.git`
   );
   await sync("npm version minor");
 };
