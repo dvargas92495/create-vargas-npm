@@ -47,9 +47,9 @@ const tasks = new Listr([
         main: "dist/index.js",
         types: "lib/index.d.ts",
         scripts: {
-          build: "tsc",
+          build: "ncc build src/index.ts -o dist",
           format: 'prettier --write "src/**/*.tsx"',
-          lint: "tslint -p tsconfig.json",
+          lint: "eslint . --ext .ts,.tsx",
           prepare: "npm run build",
           prepublishOnly: "npm t",
           preversion: "npm run lint",
@@ -83,16 +83,16 @@ const tasks = new Listr([
       ),
   },
   {
-    title: "Install Packages",
+    title: "Install Dev Packages",
     task: () => {
       process.chdir(root);
       return sync(
-        "npm install --save --save-dev @testing-library/jest-dom @testing-library/react @testing-library/user-event @types/jest @types/react @types/react-dom jest prettier ts-jest tslint tslint-config-prettier tslint-react-hooks typescript"
+        "npm install --save --save-dev @testing-library/jest-dom @testing-library/react @testing-library/user-event @types/jest @types/react @types/react-dom @vercel/ncc @typescript-eslint/parser @typescript-eslint/eslint-plugin eslint jest prettier ts-jest tslint-config-prettier tslint-react-hooks typescript"
       );
     },
   },
   {
-    title: "Install Dev Packages",
+    title: "Install Packages",
     task: () => {
       process.chdir(root);
       return sync("npm install --save react react-dom");
