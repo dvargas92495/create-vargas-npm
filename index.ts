@@ -107,7 +107,7 @@ const tasks = new Listr([
   {
     title: "Copy Template",
     task: () => {
-      process.chdir("template");
+      process.chdir(path.join(__dirname, "template"));
       return new Promise<void>((resolve) => {
         copyfiles(
           [path.join("**", "*"), root],
@@ -122,6 +122,7 @@ const tasks = new Listr([
   {
     title: "RM Unnecessary Template",
     task: () => {
+      process.chdir(root);
       if (isReact) {
         fs.unlinkSync(path.join(root, "src", "index.ts"));
         fs.unlinkSync(path.join(root, "test", "index.test.ts"));
