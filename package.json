@@ -9,7 +9,7 @@
   "scripts": {
     "build": "tsc",
     "prebuild": "rimraf ./dist/",
-    "postbuild": "copyfiles template/**/* dist",
+    "postbuild": "copyfiles -a template/**/* dist",
     "prepublishOnly": "npm run build"
   },
   "repository": {

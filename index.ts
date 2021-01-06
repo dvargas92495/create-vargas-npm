@@ -12,6 +12,8 @@ import Listr from "listr";
 
 const npmToken = process.env.NPM_TOKEN || "";
 const projectName = process.argv[2] || "";
+const opts = process.argv.slice(3);
+const isReact = opts.includes("--react");
 const root = path.resolve(projectName);
 
 const tasks = new Listr([
@@ -47,10 +49,9 @@ const tasks = new Listr([
         main: "dist/index.js",
         types: "lib/index.d.ts",
         scripts: {
-          build: "ncc build src/index.ts -o dist",
-          format: 'prettier --write "src/**/*.tsx"',
-          lint: "eslint . --ext .ts,.tsx",
-          prepare: "npm run build",
+          build: `ncc build src/index.ts${isReact ? "x" : ""} -o dist`,
+          format: `prettier --write "src/**/*.ts${isReact ? "x" : ""}"`,
+          lint: `eslint . --ext .ts${isReact ? ",.tsx" : ""}`,
           prepublishOnly: "npm t",
           preversion: "npm run lint",
           version: "npm run format && git add -A src",
@@ -87,7 +88,11 @@ const tasks = new Listr([
     task: () => {
       process.chdir(root);
       return sync(
-        "npm install --save --save-dev @testing-library/jest-dom @testing-library/react @testing-library/user-event @types/jest @types/react @types/react-dom @vercel/ncc @typescript-eslint/parser @typescript-eslint/eslint-plugin eslint jest prettier ts-jest tslint-config-prettier tslint-react-hooks typescript"
+        `npm install --save-dev @types/jest @vercel/ncc @typescript-eslint/parser @typescript-eslint/eslint-plugin eslint jest prettier ts-jest tslint-config-prettier typescript${
+          isReact
+            ? " @testing-library/jest-dom @testing-library/react @testing-library/user-event @types/react @types/react-dom tslint-react-hooks"
+            : ""
+        }`
       );
     },
   },
@@ -95,8 +100,9 @@ const tasks = new Listr([
     title: "Install Packages",
     task: () => {
       process.chdir(root);
-      return sync("npm install --save react react-dom");
+      return Promise.resolve(sync("npm install --save react react-dom"));
     },
+    skip: () => !isReact,
   },
   {
     title: "Copy Template",
@@ -105,6 +111,18 @@ const tasks = new Listr([
         parents: true,
         cwd: path.join(__dirname, "template"),
       }),
+  },
+  {
+    title: "RM Unnecessary Template",
+    task: () => {
+      if (isReact) {
+        fs.rmSync(path.join(root, "src", "index.ts"));
+        fs.rmSync(path.join(root, "test", "index.test.ts"));
+      } else {
+        fs.rmSync(path.join(root, "src", "index.tsx"));
+        fs.rmSync(path.join(root, "test", "index.test.tsx"));
+      }
+    },
   },
   {
     title: "Add NPM Token",
@@ -166,7 +184,7 @@ const tasks = new Listr([
     task: () => {
       process.chdir(root);
       return sync(
-        `git remote add origin https://github.com/dvargas92495/${projectName}.git`,
+        `git remote add origin https:\/\/github.com\/dvargas92495\/${projectName}.git`,
         { stdio: "ignore" }
       );
     },
