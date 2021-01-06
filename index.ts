@@ -125,10 +125,10 @@ const tasks = new Listr([
       process.chdir(root);
       if (isReact) {
         fs.unlinkSync(path.join(root, "src", "index.ts"));
-        fs.unlinkSync(path.join(root, "test", "index.test.ts"));
+        fs.unlinkSync(path.join(root, "tests", "index.test.ts"));
       } else {
         fs.unlinkSync(path.join(root, "src", "index.tsx"));
-        fs.unlinkSync(path.join(root, "test", "index.test.tsx"));
+        fs.unlinkSync(path.join(root, "tests", "index.test.tsx"));
       }
     },
   },
