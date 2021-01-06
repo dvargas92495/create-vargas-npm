@@ -109,7 +109,7 @@ const tasks = new Listr([
     task: () =>
       new Promise((resolve) =>
         copyfiles(
-          [path.join(__dirname, "template", "**", "*"), root],
+          [path.join("template", "**", "*"), root],
           {
             all: true,
           },
