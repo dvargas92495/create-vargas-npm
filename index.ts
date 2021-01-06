@@ -106,16 +106,18 @@ const tasks = new Listr([
   },
   {
     title: "Copy Template",
-    task: () =>
-      new Promise((resolve) =>
+    task: () => {
+      process.chdir("template");
+      return new Promise<void>((resolve) => {
         copyfiles(
-          [path.join("template", "**", "*"), root],
+          [path.join("**", "*"), root],
           {
             all: true,
           },
-          resolve
-        )
-      ),
+          () => resolve()
+        );
+      });
+    },
   },
   {
     title: "RM Unnecessary Template",
