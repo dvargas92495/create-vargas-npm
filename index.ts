@@ -5,7 +5,7 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import { sync } from "cross-spawn";
-import cpy from "cpy";
+import copyfiles from "copyfiles";
 import sodium from "tweetsodium";
 import axios from "axios";
 import Listr from "listr";
@@ -107,20 +107,25 @@ const tasks = new Listr([
   {
     title: "Copy Template",
     task: () =>
-      cpy("**", root, {
-        parents: true,
-        cwd: path.join(__dirname, "template"),
-      }),
+      new Promise((resolve) =>
+        copyfiles(
+          [path.join(__dirname, "template", "**", "*"), root],
+          {
+            all: true,
+          },
+          resolve
+        )
+      ),
   },
   {
     title: "RM Unnecessary Template",
     task: () => {
       if (isReact) {
-        fs.rmSync(path.join(root, "src", "index.ts"));
-        fs.rmSync(path.join(root, "test", "index.test.ts"));
+        fs.unlinkSync(path.join(root, "src", "index.ts"));
+        fs.unlinkSync(path.join(root, "test", "index.test.ts"));
       } else {
-        fs.rmSync(path.join(root, "src", "index.tsx"));
-        fs.rmSync(path.join(root, "test", "index.test.tsx"));
+        fs.unlinkSync(path.join(root, "src", "index.tsx"));
+        fs.unlinkSync(path.join(root, "test", "index.test.tsx"));
       }
     },
   },
