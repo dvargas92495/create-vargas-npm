@@ -47,12 +47,13 @@ const tasks = new Listr([
         description: `Description for ${projectName}`,
         version: "0.0.0",
         main: "dist/index.js",
-        types: "lib/index.d.ts",
+        types: "dist/index.d.ts",
         scripts: {
+          prebuild: "npm t",
           build: `ncc build src/index.ts${isReact ? "x" : ""} -o dist`,
           format: `prettier --write "src/**/*.ts${isReact ? "x" : ""}"`,
           lint: `eslint . --ext .ts${isReact ? ",.tsx" : ""}`,
-          prepublishOnly: "npm t",
+          prepublishOnly: "npm run build",
           preversion: "npm run lint",
           version: "npm run format && git add -A src",
           postversion: "git push origin main && git push --tags",
@@ -64,6 +65,7 @@ const tasks = new Listr([
           react: "^16.8.0 || ^17",
           "react-dom": "^16.8.0 || ^17",
         },
+        files: ["/dist"],
       };
 
       return fs.writeFileSync(
@@ -79,9 +81,35 @@ const tasks = new Listr([
         path.join(root, "README.md"),
         `# ${projectName}
     
-    Description for ${projectName}
+Description for ${projectName}
     `
       ),
+  },
+  {
+    title: "Write Jest Config",
+    task: () => {
+      const jestConfig = isReact
+        ? {
+            transform: {
+              "^.+\\.(t|j)sx?$": "ts-jest",
+            },
+            setupFilesAfterEnv: ["@testing-library/jest-dom/extend-expect"],
+            testRegex: "/tests/.*\\.test\\.tsx?$",
+            moduleFileExtensions: ["ts", "tsx", "js", "jsx"],
+          }
+        : {
+            transform: {
+              "^.+\\.(t|j)s$": "ts-jest",
+            },
+            testRegex: "/tests/.*\\.test\\.ts$",
+            moduleFileExtensions: ["ts", "tsx", "js", "jsx"],
+          };
+
+      return fs.writeFileSync(
+        path.join(root, "jestconfig.json"),
+        JSON.stringify(jestConfig, null, 2) + os.EOL
+      );
+    },
   },
   {
     title: "Install Dev Packages",
@@ -192,7 +220,7 @@ const tasks = new Listr([
     task: () => {
       process.chdir(root);
       return sync(
-        `git remote add origin https:\/\/github.com\/dvargas92495\/${projectName}.git`,
+        `git remote add origin "https://github.com/dvargas92495/${projectName}.git"`,
         { stdio: "ignore" }
       );
     },
@@ -202,13 +230,6 @@ const tasks = new Listr([
     task: () => {
       process.chdir(root);
       return sync(`npm version minor`, { stdio: "ignore" });
-    },
-  },
-  {
-    title: "NPM publish",
-    task: () => {
-      process.chdir(root);
-      return sync(`npm publish`, { stdio: "ignore" });
     },
   },
 ]);
