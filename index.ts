@@ -121,12 +121,14 @@ Description for ${projectName}
     title: "Install Dev Packages",
     task: () => {
       process.chdir(root);
-      return sync(
-        `npm install --save-dev @types/jest @vercel/ncc @typescript-eslint/parser @typescript-eslint/eslint-plugin eslint jest prettier ts-jest tslint-config-prettier typescript${
-          isReact
-            ? " @testing-library/jest-dom @testing-library/react @testing-library/user-event @types/react @types/react-dom tslint-react-hooks"
-            : ""
-        }`
+      return Promise.resolve(
+        sync(
+          `npm install --save-dev @types/jest @vercel/ncc @typescript-eslint/parser @typescript-eslint/eslint-plugin eslint jest prettier ts-jest tslint-config-prettier typescript${
+            isReact
+              ? " @testing-library/jest-dom @testing-library/react @testing-library/user-event @types/react @types/react-dom tslint-react-hooks"
+              : ""
+          }`
+        )
       );
     },
   },
@@ -175,7 +177,7 @@ Description for ${projectName}
           { name: projectName },
           githubOpts
         )
-        .catch((e) => console.log("Failed to create repo", e));
+        .catch((e) => console.log("Failed to create repo", e.response?.data));
     },
   },
   {
@@ -198,11 +200,12 @@ Description for ${projectName}
             `https://api.github.com/repos/dvargas92495/${projectName}/actions/secrets/NPM_TOKEN`,
             {
               encrypted_value,
+              key_id: key,
             },
             githubOpts
           );
         })
-        .catch((e) => console.log("Failed to add secret", e));
+        .catch((e) => console.log("Failed to add secret", e.response?.data));
     },
   },
   {
@@ -233,7 +236,7 @@ Description for ${projectName}
     task: () => {
       process.chdir(root);
       return sync(
-        `git remote add origin "https://github.com/dvargas92495/${projectName}.git"`,
+        `git remote add origin "https:\/\/github.com\/dvargas92495\/${projectName}.git"`,
         { stdio: "ignore" }
       );
     },
