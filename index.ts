@@ -8,15 +8,19 @@ import { sync } from "cross-spawn";
 import copyfiles from "copyfiles";
 import sodium from "tweetsodium";
 import axios from "axios";
-import Listr from "listr";
 
 const npmToken = process.env.NPM_TOKEN || "";
 const projectName = process.argv[2] || "";
 const opts = process.argv.slice(3);
 const isReact = opts.includes("--react");
 const root = path.resolve(projectName);
+const githubOpts = {
+  headers: {
+    Authorization: `token ${process.env.GITHUB_TOKEN}`,
+  },
+};
 
-const tasks = new Listr([
+const tasks = [
   {
     title: "Validate Package Name",
     task: () => {
@@ -163,15 +167,22 @@ Description for ${projectName}
     },
   },
   {
+    title: "Create a github repo",
+    task: () => {
+      return axios
+        .post(
+          "https://api.github.com/user/repos",
+          { name: projectName },
+          githubOpts
+        )
+        .catch((e) => console.log("Failed to create repo", e));
+    },
+  },
+  {
     title: "Add NPM Token",
     task: () => {
       // https://docs.github.com/en/free-pro-team@latest/rest/reference/actions#example-encrypting-a-secret-using-nodejs
       const messageBytes = Buffer.from(npmToken);
-      const githubOpts = {
-        headers: {
-          Authorization: `token ${process.env.GITHUB_TOKEN}`,
-        },
-      };
       return axios
         .get(
           `https://api.github.com/repos/dvargas92495/${projectName}/actions/secrets/public-key`,
@@ -190,9 +201,9 @@ Description for ${projectName}
             },
             githubOpts
           );
-        });
+        })
+        .catch((e) => console.log("Failed to add secret", e));
     },
-    skip: () => !!npmToken,
   },
   {
     title: "Git init",
@@ -234,6 +245,20 @@ Description for ${projectName}
       return sync(`npm version minor`, { stdio: "ignore" });
     },
   },
-]);
+];
 
-tasks.run().catch((err) => console.error(err));
+const run = async () => {
+  for (const task of tasks) {
+    console.log("Running", task.title, "...");
+    if (task.skip?.()) {
+      console.log("Skipped");
+      continue;
+    }
+    await task.task();
+  }
+};
+
+console.log(process.env.NODE_ENV);
+run()
+  .then(() => console.log("Package Ready!"))
+  .catch((e) => console.error(e));
