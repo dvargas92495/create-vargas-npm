@@ -42,7 +42,7 @@ const tasks = new Listr([
   {
     title: "Write Package JSON",
     task: () => {
-      const packageJson = {
+      const packageJson: any = {
         name: projectName,
         description: `Description for ${projectName}`,
         version: "0.0.0",
@@ -61,12 +61,14 @@ const tasks = new Listr([
           test: "jest --config jestconfig.json",
         },
         license: "MIT",
-        peerDependencies: {
-          react: "^16.8.0 || ^17",
-          "react-dom": "^16.8.0 || ^17",
-        },
         files: ["/dist"],
       };
+      if (isReact) {
+        packageJson.peerDependencies = {
+          react: "^16.8.0 || ^17",
+          "react-dom": "^16.8.0 || ^17",
+        };
+      }
 
       return fs.writeFileSync(
         path.join(root, "package.json"),
