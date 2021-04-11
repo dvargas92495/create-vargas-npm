@@ -1,6 +1,6 @@
 {
   "name": "create-vargas-npm",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "description": "Opinionated way to generate new npm packages",
   "main": "./dist/index.js",
   "bin": {
