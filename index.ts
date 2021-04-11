@@ -94,26 +94,55 @@ Description for ${projectName}
   {
     title: "Write Jest Config",
     task: () => {
-      const jestConfig = isReact
-        ? {
-            transform: {
-              "^.+\\.(t|j)sx?$": "ts-jest",
-            },
-            setupFilesAfterEnv: ["@testing-library/jest-dom/extend-expect"],
-            testRegex: "/tests/.*\\.test\\.tsx?$",
-            moduleFileExtensions: ["ts", "tsx", "js", "jsx"],
-          }
-        : {
-            transform: {
-              "^.+\\.(t|j)s$": "ts-jest",
-            },
-            testRegex: "/tests/.*\\.test\\.ts$",
-            moduleFileExtensions: ["ts", "tsx", "js", "jsx"],
-          };
+      const jestConfig = {
+        transform: {
+          "^.+\\.(t|j)sx?$": "ts-jest",
+        },
+        testRegex: "/tests/.*\\.test\\.tsx?$",
+        moduleFileExtensions: ["ts", "tsx", "js", "jsx"],
+        ...(isReact
+          ? {
+              setupFilesAfterEnv: ["@testing-library/jest-dom/extend-expect"],
+            }
+          : {}),
+      };
 
       return fs.writeFileSync(
         path.join(root, "jestconfig.json"),
         JSON.stringify(jestConfig, null, 2) + os.EOL
+      );
+    },
+  },
+  {
+    title: "Write tsconfig.json",
+    task: () => {
+      const tsconfig = {
+        compilerOptions: {
+          jsx: "react",
+          target: "es2015",
+          allowJs: false,
+          lib: ["es2019", "DOM"],
+          module: "commonjs",
+          moduleResolution: "node",
+          declaration: true,
+          outDir: "./dist",
+          strict: true,
+          esModuleInterop: true,
+          noUnusedLocals: true,
+          noUnusedParameters: true,
+          noImplicitReturns: true,
+          noImplicitThis: true,
+          noImplicitAny: true,
+          forceConsistentCasingInFileNames: true,
+          allowSyntheticDefaultImports: true,
+        },
+        include: ["src"],
+        exclude: ["node_modules", "**/__tests__/*"],
+      };
+
+      return fs.writeFileSync(
+        path.join(root, "tsconfig.json"),
+        JSON.stringify(tsconfig, null, 2) + os.EOL
       );
     },
   },
