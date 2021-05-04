@@ -5,7 +5,6 @@ import fs from "fs";
 import path from "path";
 import os from "os";
 import spawn, { sync } from "cross-spawn";
-import copyfiles from "copyfiles";
 import sodium from "tweetsodium";
 import axios from "axios";
 
@@ -147,6 +146,101 @@ Description for ${projectName}
     },
   },
   {
+    title: "Write main.yaml",
+    task: () => {
+      fs.mkdirSync(path.join(root, ".github", "workflows"), {
+        recursive: true,
+      });
+      return fs.writeFileSync(
+        path.join(root, "tsconfig.json"),
+        `name: Publish package
+on:
+  push:
+    branches: main
+    paths:
+      - "package.json"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Use Node.js 12.16.1
+        uses: actions/setup-node@v1
+        with:
+          node-version: 12.16.1
+      - name: install
+        run: npm install
+      - uses: JS-DevTools/npm-publish@v1
+        with:
+          token: \${{ secrets.NPM_TOKEN }}
+          access: "public"
+          check-version: false
+`
+      );
+    },
+  },
+  {
+    title: "Write .gitignore",
+    task: () => {
+      return fs.writeFileSync(
+        path.join(root, ".gitignore"),
+        `node_modules
+dist
+`
+      );
+    },
+  },
+  {
+    title: "Write tsconfig.json",
+    task: () => {
+      const eslintrc = {
+        root: true,
+        parser: "@typescript-eslint/parser",
+        plugins: ["@typescript-eslint"],
+        extends: [
+          "eslint:recommended",
+          "plugin:@typescript-eslint/eslint-recommended",
+          "plugin:@typescript-eslint/recommended",
+        ],
+      };
+      return fs.writeFileSync(
+        path.join(root, ".eslintrc.json"),
+        JSON.stringify(eslintrc, null, 2) + os.EOL
+      );
+    },
+  },
+  {
+    title: "Write LICENSE",
+    task: () => {
+      return fs.writeFileSync(
+        path.join(root, "tsconfig.json"),
+        `MIT License
+
+Copyright (c) ${new Date().getFullYear()} David Vargas
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+`
+      );
+    },
+  },
+  {
     title: "Install Dev Packages",
     task: () => {
       process.chdir(root);
@@ -211,30 +305,59 @@ Description for ${projectName}
     skip: () => !isReact,
   },
   {
-    title: "Copy Template",
+    title: "Write src",
     task: () => {
-      process.chdir(path.join(__dirname, "template"));
-      return new Promise<void>((resolve) => {
-        copyfiles(
-          [path.join("**", "*"), root],
-          {
-            all: true,
-          },
-          () => resolve()
+      fs.mkdirSync(path.join(root, "src"));
+      if (isReact) {
+        return fs.writeFileSync(
+          path.join(root, "src", "index.tsx"),
+          `import React from "react";
+
+const Package: React.FunctionComponent = () => <div>Fill out component!</div>;
+
+export default Package;
+`
         );
-      });
+      } else {
+        return fs.writeFileSync(
+          path.join(root, "src", "index.ts"),
+          `const run = (): number => {
+  return 0;
+};
+
+export default run;
+`
+        );
+      }
     },
   },
   {
-    title: "RM Unnecessary Template",
+    title: "Write tests",
     task: () => {
-      process.chdir(root);
+      fs.mkdirSync(path.join(root, "tests"));
       if (isReact) {
-        fs.unlinkSync(path.join(root, "src", "index.ts"));
-        fs.unlinkSync(path.join(root, "tests", "index.test.ts"));
+        return fs.writeFileSync(
+          path.join(root, "tests", "index.test.tsx"),
+          `import React from 'react';
+import Package from '../src';
+import { render } from '@testing-library/react';
+
+test('Renders Package', () => {
+  const { container } = render(<Package/>);
+  expect(container).toBeInTheDocument();
+});
+`
+        );
       } else {
-        fs.unlinkSync(path.join(root, "src", "index.tsx"));
-        fs.unlinkSync(path.join(root, "tests", "index.test.tsx"));
+        return fs.writeFileSync(
+          path.join(root, "tests", "index.test.ts"),
+          `import run from "../src";
+
+test("Runs Default", () => {
+  expect(run()).toBe(0);
+});
+`
+        );
       }
     },
   },
