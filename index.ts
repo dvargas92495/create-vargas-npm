@@ -4,7 +4,7 @@ import chalk from "chalk";
 import fs from "fs";
 import path from "path";
 import os from "os";
-import { sync } from "cross-spawn";
+import spawn, { sync } from "cross-spawn";
 import copyfiles from "copyfiles";
 import sodium from "tweetsodium";
 import axios from "axios";
@@ -150,22 +150,63 @@ Description for ${projectName}
     title: "Install Dev Packages",
     task: () => {
       process.chdir(root);
-      return Promise.resolve(
-        sync(
-          `npm install --save-dev @types/jest @vercel/ncc @typescript-eslint/parser @typescript-eslint/eslint-plugin eslint jest prettier ts-jest tslint-config-prettier typescript${
-            isReact
-              ? " @testing-library/jest-dom @testing-library/react @testing-library/user-event @types/react @types/react-dom tslint-react-hooks"
-              : ""
-          }`
-        )
-      );
+      return new Promise<void>((resolve, reject) => {
+        const dependencies = [
+          "@types/jest",
+          "@vercel/ncc",
+          "@typescript-eslint/parser",
+          "@typescript-eslint/eslint-plugin",
+          "eslint",
+          "jest",
+          "prettier",
+          "ts-jest",
+          "tslint-config-prettier",
+          "typescript",
+          ...(isReact
+            ? [
+                "@testing-library/jest-dom",
+                "@testing-library/react",
+                "@testing-library/user-event",
+                "@types/react",
+                "@types/react-dom",
+                "tslint-react-hooks",
+              ]
+            : []),
+        ];
+        const child = spawn(
+          "npm",
+          ["install", "--save-dev"].concat(dependencies),
+          {
+            stdio: "inherit",
+          }
+        );
+        child.on("close", (code) => {
+          if (code !== 0) {
+            reject(code);
+            return;
+          }
+          resolve();
+        });
+      });
     },
   },
   {
     title: "Install Packages",
     task: () => {
       process.chdir(root);
-      return Promise.resolve(sync("npm install --save react react-dom"));
+      return new Promise<void>((resolve, reject) => {
+        const dependencies = ["react", "react-dom"];
+        const child = spawn("npm", ["install"].concat(dependencies), {
+          stdio: "inherit",
+        });
+        child.on("close", (code) => {
+          if (code !== 0) {
+            reject(code);
+            return;
+          }
+          resolve();
+        });
+      });
     },
     skip: () => !isReact,
   },
@@ -274,7 +315,18 @@ Description for ${projectName}
     title: "NPM version",
     task: () => {
       process.chdir(root);
-      return sync(`npm version minor`, { stdio: "ignore" });
+      return new Promise<void>((resolve, reject) => {
+        const child = spawn("npm", ["version", "minor"], {
+          stdio: "inherit",
+        });
+        child.on("close", (code) => {
+          if (code !== 0) {
+            reject(code);
+            return;
+          }
+          resolve();
+        });
+      });
     },
   },
 ];
@@ -283,14 +335,13 @@ const run = async () => {
   for (const task of tasks) {
     console.log("Running", task.title, "...");
     if (task.skip?.()) {
-      console.log("Skipped");
+      console.log("Skipped", task.title);
       continue;
     }
     await task.task();
   }
 };
 
-console.log(process.env.NODE_ENV);
 run()
   .then(() => console.log("Package Ready!"))
   .catch((e) => console.error(e));
