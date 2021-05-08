@@ -192,7 +192,7 @@ dist
     },
   },
   {
-    title: "Write tsconfig.json",
+    title: "Write .eslintrc.json",
     task: () => {
       const eslintrc = {
         root: true,
@@ -214,7 +214,7 @@ dist
     title: "Write LICENSE",
     task: () => {
       return fs.writeFileSync(
-        path.join(root, "tsconfig.json"),
+        path.join(root, "LICENSE"),
         `MIT License
 
 Copyright (c) ${new Date().getFullYear()} David Vargas
