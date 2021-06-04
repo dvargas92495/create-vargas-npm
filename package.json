@@ -7,7 +7,7 @@
     "create-vargas-npm": "./dist/index.js"
   },
   "scripts": {
-    "build": "ncc build src/index.ts -o dist",
+    "build": "ncc build index.ts -o dist",
     "prebuild": "rimraf ./dist/",
     "prepublishOnly": "npm run build",
     "postversion": "git push origin main && git push --tags"
