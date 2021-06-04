@@ -7,7 +7,7 @@
     "create-vargas-npm": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "ncc build src/index.ts -o dist",
     "prebuild": "rimraf ./dist/",
     "prepublishOnly": "npm run build",
     "postversion": "git push origin main && git push --tags"
@@ -32,6 +32,7 @@
     "@types/node": "^14.14.2",
     "@types/rimraf": "^3.0.0",
     "@types/validate-npm-package-name": "^3.0.0",
+    "@vercel/ncc": "^0.28.6",
     "prettier": "^2.1.2",
     "rimraf": "^3.0.2",
     "typescript": "^4.0.3"

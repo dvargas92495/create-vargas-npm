@@ -152,7 +152,7 @@ Description for ${projectName}
         recursive: true,
       });
       return fs.writeFileSync(
-        path.join(root, "tsconfig.json"),
+        path.join(root, "main.yaml"),
         `name: Publish package
 on:
   push:
@@ -383,7 +383,7 @@ test("Runs Default", () => {
           `https://api.github.com/repos/dvargas92495/${projectName}/actions/secrets/public-key`,
           githubOpts
         )
-        .then(({ data: { key } }) => {
+        .then(({ data: { key, key_id } }) => {
           const keyBytes = Buffer.from(key, "base64");
           const encryptedBytes = sodium.seal(messageBytes, keyBytes);
           const encrypted_value = Buffer.from(encryptedBytes).toString(
@@ -393,7 +393,7 @@ test("Runs Default", () => {
             `https://api.github.com/repos/dvargas92495/${projectName}/actions/secrets/NPM_TOKEN`,
             {
               encrypted_value,
-              key_id: key,
+              key_id,
             },
             githubOpts
           );
@@ -429,7 +429,7 @@ test("Runs Default", () => {
     task: () => {
       process.chdir(root);
       return sync(
-        `git remote add origin "https:\/\/github.com\/dvargas92495\/${projectName}.git"`,
+        `git remote add origin \\"https:\\/\\/github.com\\/dvargas92495\\/${projectName}.git\\"`,
         { stdio: "ignore" }
       );
     },
