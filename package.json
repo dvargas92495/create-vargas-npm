@@ -7,7 +7,7 @@
     "create-vargas-npm": "./dist/index.js"
   },
   "scripts": {
-    "build": "esbuild index.ts -outfile=dist/index.js --platform=node --bundle",
+    "build": "esbuild index.ts --outfile=dist/index.js --platform=node --bundle",
     "prebuild": "rimraf ./dist/",
     "prepublishOnly": "npm run build",
     "postversion": "git push origin main && git push --tags"
