@@ -859,16 +859,21 @@ module "aws-serverless-backend" {
 
 const run = async () => {
   for (const task of tasks) {
-    console.log("Running", task.title, "...");
+    chalk.blue("Running", task.title, "...");
     if (task.skip?.()) {
-      console.log("Skipped", task.title);
+      chalk.blueBright("Skipped", task.title);
       continue;
     }
-    await task.task();
     const result = await Promise.resolve(task.task)
       .then((t) => t())
-      .then(() => ({ success: true as const }))
-      .catch((e) => ({ success: false as const, message: e.message }));
+      .then(() => {
+        chalk.greenBright("Successfully Ran", task.title);
+        return { success: true as const };
+      })
+      .catch((e) => {
+        chalk.redBright("Failed to run", task.title);
+        return { success: false as const, message: e.message };
+      });
     if (!result.success) {
       return Promise.reject(result.message);
     }
