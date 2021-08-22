@@ -55,6 +55,7 @@ const tasks: {
   {
     title: "Make Project Directory",
     task: () => fs.mkdirSync(projectName),
+    skip: () => fs.existsSync(projectName),
   },
   {
     title: "Write Package JSON",
