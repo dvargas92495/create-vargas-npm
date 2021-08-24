@@ -795,6 +795,7 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
           return;
         });
     },
+    skip: () => !isApp
   },
   {
     title: "Create Workspace",
