@@ -749,6 +749,7 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
       process.chdir(root);
       return sync(`git push origin main`, { stdio: "ignore" });
     },
+    skip: () => !isApp,
   },
   {
     title: "Create Site Manager",
