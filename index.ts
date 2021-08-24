@@ -230,7 +230,7 @@ on:
       - "package.json"
       - "src/**"
       - "pages/**"
-      - "lambdas/**"
+      - ".github/workflows/main.yaml"
 
 env:
   API_URL: api.${projectName}
@@ -250,8 +250,8 @@ jobs:
         run: npm install
       - name: build
         run: npm run build
-      - name: publish
-        run: npm run publish
+      - name: deploy
+        run: npm run deploy
 `
       );
     },
@@ -290,8 +290,8 @@ deploy:
       run: npm install
     - name: build
       run: npm run build:api
-    - name: publish
-      run: npm run publish:api
+    - name: deploy
+      run: npm run deploy:api
 `
       );
     },
@@ -323,7 +323,7 @@ out
           "plugin:@typescript-eslint/eslint-recommended",
           "plugin:@typescript-eslint/recommended",
         ],
-        ignorePatterns: "**/dist/*",
+        ignorePatterns: ["**/dist/*", "scripts/"],
       };
       return fs.writeFileSync(
         path.join(root, ".eslintrc.json"),
@@ -367,7 +367,6 @@ SOFTWARE.
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
         const dependencies = [
-          "@types/jest",
           "@typescript-eslint/parser",
           "@typescript-eslint/eslint-plugin",
           "esbuild",
@@ -387,13 +386,14 @@ SOFTWARE.
             : []),
           ...(isApp
             ? [
+                "@types/node",
                 "@types/aws-lambda",
                 "@types/react",
                 "@types/react-dom",
                 "localhost-lambdas",
                 "tslint-react-hooks",
               ]
-            : ["cross-env", "jest", "ts-jest"]),
+            : ["@types/jest", "cross-env", "jest", "ts-jest"]),
         ];
         const child = spawn(
           "npm",
@@ -418,7 +418,7 @@ SOFTWARE.
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
         const dependencies = ["react", "react-dom"];
-        if (isApp) dependencies.push("@dvargas92495/ui");
+        if (isApp) dependencies.push("@dvargas92495/ui", "aws-sdk");
         const child = spawn("npm", ["install"].concat(dependencies), {
           stdio: "inherit",
         });
@@ -517,19 +517,19 @@ test("Runs Default", () => {
         fs.writeFileSync(
           path.join(root, "main.tf"),
           `terraform {
-backend "remote" {
-  hostname = "app.terraform.io"
-  organization = "VargasArts"
-  workspaces {
-    prefix = "${safeProjectName}"
+  backend "remote" {
+    hostname = "app.terraform.io"
+    organization = "VargasArts"
+    workspaces {
+      prefix = "${safeProjectName}"
+    }
   }
-}
-required_providers {
-  github = {
-    source = "integrations/github"
-    version = "4.2.0"
+  required_providers {
+    github = {
+      source = "integrations/github"
+      version = "4.2.0"
+    }
   }
-}
 }
 
 variable "aws_access_token" {
@@ -561,7 +561,7 @@ provider "github" {
 
 module "aws_static_site" {
   source  = "dvargas92495/static-site/aws"
-  version = "2.3.2"
+  version = "3.0.8"
 
   domain = "${projectName}"
   secret = var.secret
@@ -576,7 +576,7 @@ module "aws_static_site" {
 
 module "aws-serverless-backend" {
     source  = "dvargas92495/serverless-backend/aws"
-    version = "1.5.11"
+    version = "1.5.14"
 
     api_name = "${safeProjectName}"
     domain = "${projectName}"
@@ -586,6 +586,23 @@ module "aws-serverless-backend" {
     tags = {
         Application = "${safeProjectName}"
     }
+}
+
+provider "github" {
+  owner = "dvargas92495"
+  token = var.github_token
+}
+
+resource "github_actions_secret" "deploy_aws_access_key" {
+  repository       = "${projectName}"
+  secret_name      = "DEPLOY_AWS_ACCESS_KEY"
+  plaintext_value  = module.aws_static_site.deploy-id
+}
+
+resource "github_actions_secret" "deploy_aws_access_secret" {
+  repository       = "${projectName}"
+  secret_name      = "DEPLOY_AWS_ACCESS_SECRET"
+  plaintext_value  = module.aws_static_site.deploy-secret
 }
 `
         )
@@ -750,7 +767,7 @@ module "aws-serverless-backend" {
               })
               .promise(),
             ...[
-              "arn:aws:iam::aws:policy/AWSLambdaFullAccess",
+              "arn:aws:iam::aws:policy/AWSLambda_FullAccess",
               "arn:aws:iam::aws:policy/AmazonAPIGatewayAdministrator",
               "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess",
               "arn:aws:iam::aws:policy/AmazonSESFullAccess",
@@ -770,6 +787,10 @@ module "aws-serverless-backend" {
         .then((creds) => {
           process.env.AWS_ACCESS_KEY_ID = creds.AccessKey.AccessKeyId;
           process.env.AWS_ACCESS_KEY_SECRET = creds.AccessKey.SecretAccessKey;
+          fs.appendFileSync(
+            path.resolve(`${process.env.HOME}/.aws/credentials`),
+            `[${safeProjectName}]\naws_access_key_id = ${creds.AccessKey.AccessKeyId}\naws_secret_access_key = ${creds.AccessKey.SecretAccessKey}\n`
+          );
           console.log("Successfully created keys for", safeProjectName);
           return;
         });
@@ -850,6 +871,33 @@ module "aws-serverless-backend" {
                 tfOpts
               )
             )
+          ).then(() =>
+            axios.post(
+              `https://app.terraform.io/api/v2/runs`,
+              {
+                data: {
+                  attributes: {
+                    message: "Kicking off first run",
+                  },
+                  type: "runs",
+                  relationships: {
+                    workspace: {
+                      data: {
+                        type: "workspaces",
+                        id,
+                      },
+                    },
+                  },
+                },
+              },
+              {
+                ...tfOpts,
+                headers: {
+                  ...tfOpts.headers,
+                  Authorization: `Bearer ${process.env.TERRAFORM_USER_TOKEN}`,
+                },
+              }
+            )
           )
         );
     },
@@ -859,19 +907,19 @@ module "aws-serverless-backend" {
 
 const run = async () => {
   for (const task of tasks) {
-    chalk.blue("Running", task.title, "...");
+    console.log(chalk.blue("Running", task.title, "..."));
     if (task.skip?.()) {
-      chalk.blueBright("Skipped", task.title);
+      console.log(chalk.blueBright("Skipped", task.title));
       continue;
     }
     const result = await Promise.resolve(task.task)
       .then((t) => t())
       .then(() => {
-        chalk.greenBright("Successfully Ran", task.title);
+        console.log(chalk.greenBright("Successfully Ran", task.title));
         return { success: true as const };
       })
       .catch((e) => {
-        chalk.redBright("Failed to run", task.title);
+        console.log(chalk.redBright("Failed to run", task.title));
         return { success: false as const, message: e.message };
       });
     if (!result.success) {
