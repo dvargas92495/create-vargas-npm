@@ -14,6 +14,10 @@ AWS.config.credentials = new AWS.SharedIniFileCredentials({
   profile: "davidvargas",
 });
 const iam = new AWS.IAM({ apiVersion: "2010-05-08" });
+const route53 = new AWS.Route53({ apiVersion: "2013-04-01" });
+const domains = new AWS.Route53Domains({
+  apiVersion: "2014-05-15",
+});
 const npmToken = process.env.NPM_TOKEN || "";
 const terraformOrganizationToken = process.env.TERRAFORM_ORGANIZATION_TOKEN;
 const projectName = process.argv[2] || "";
@@ -26,6 +30,26 @@ const githubOpts = {
   headers: {
     Authorization: `token ${process.env.GITHUB_TOKEN}`,
   },
+};
+
+const getHostedZoneIdByName = async (domain: string) => {
+  let finished = false;
+  let props: { Marker?: string } = {};
+  while (!finished) {
+    const {
+      HostedZones,
+      IsTruncated,
+      NextMarker,
+    } = await route53.listHostedZones(props).promise();
+    const zone = HostedZones.find((i) => i.Name === `${domain}.`);
+    if (zone) {
+      return zone.Id.replace(/\/hostedzone\//, "");
+    }
+    finished = !IsTruncated;
+    props = { Marker: NextMarker };
+  }
+
+  return null;
 };
 
 const tasks: {
@@ -53,6 +77,83 @@ const tasks: {
     skip: () => isApp,
   },
   {
+    title: "Verify site ownership",
+    task: () => {
+      return getHostedZoneIdByName(projectName).then((id) => {
+        if (id) {
+          return console.log(
+            chalk.yellow(
+              "Already own domain in hosted zone",
+              id,
+              "moving on..."
+            )
+          );
+        }
+        return domains
+          .checkDomainAvailability({ DomainName: projectName })
+          .promise()
+          .then((r) => {
+            if (r.Availability !== "AVAILABLE") {
+              return domains
+                .getDomainSuggestions({
+                  DomainName: projectName,
+                  OnlyAvailable: true,
+                  SuggestionCount: 10,
+                })
+                .promise()
+                .then((r) => {
+                  throw new Error(
+                    `Domain ${projectName} is not available and not owned, try one of these:\n${r.SuggestionsList?.map(
+                      (s) => `- ${s.DomainName}`
+                    )}\naborting...`
+                  );
+                });
+            }
+            console.log(chalk.blue("Buying domain", projectName));
+            const {
+              AddressLine1 = "",
+              AddressLine2 = "",
+              City = "",
+              State = "",
+              ZipCode = "",
+            } = JSON.parse(process.env.CONTACT_DETAIL || "{}");
+            if (!AddressLine1 || !AddressLine2 || !City || !State || !ZipCode) {
+              throw new Error(
+                "Invalid Address entered in CONTACT_DETAIL stringified JSON env variable"
+              );
+            }
+            const Contact = {
+              ContactType: "PERSON",
+              CountryCode: "US",
+              Email: "dvargas92495@gmail.com",
+              FirstName: "David",
+              LastName: "Vargas",
+              AddressLine1,
+              AddressLine2,
+              City,
+              State,
+              ZipCode,
+            };
+            return domains
+              .registerDomain({
+                TechContact: Contact,
+                RegistrantContact: Contact,
+                AdminContact: Contact,
+                DomainName: projectName,
+                DurationInYears: 1,
+              })
+              .promise()
+              .then((r) =>
+                console.log(
+                  chalk.green("Successfully bought", projectName, "operation id:", r.OperationId)
+                )
+              );
+          });
+      });
+    },
+    skip: () => !isApp,
+  },
+  {
     title: "Make Project Directory",
     task: () => fs.mkdirSync(projectName),
     skip: () => fs.existsSync(projectName),
@@ -65,6 +166,7 @@ const tasks: {
         description: `Description for ${projectName}`,
         version: "0.0.1",
         license: "MIT",
+        repository: `dvargas92495/${projectName}`,
         ...(isApp
           ? {
               scripts: {
@@ -628,7 +730,7 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
     task: () => {
       return axios
         .get(`https://api.github.com/repos/dvargas92495/${projectName}`)
-        .then(() => console.log("Repo already exists."))
+        .then(() => console.log(chalk.yellow("Repo already exists.")))
         .catch((e) =>
           e.response?.status === 404
             ? axios
@@ -638,9 +740,11 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
                   githubOpts
                 )
                 .catch((err) =>
-                  console.log("Failed to create repo", err.response?.data)
+                  console.log(
+                    chalk.red("Failed to create repo", err.response?.data)
+                  )
                 )
-            : console.log("Failed to check repo", e.response?.data)
+            : console.log(chalk.red("Failed to check repo", e.response?.data))
         );
     },
     skip: () => !process.env.GITHUB_TOKEN,
@@ -670,7 +774,9 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
             githubOpts
           );
         })
-        .catch((e) => console.log("Failed to add secret", e.response?.data));
+        .catch((e) =>
+          console.log(chalk.red("Failed to add secret", e.response?.data))
+        );
     },
     skip: () => isApp,
   },
@@ -729,7 +835,7 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
     task: () => {
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
-        const child = spawn("npm", ["version", "minor"], {
+        const child = spawn("npm", ["version", "patch"], {
           stdio: "inherit",
         });
         child.on("close", (code) => {
@@ -792,11 +898,13 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
             path.resolve(`${process.env.HOME}/.aws/credentials`),
             `[${safeProjectName}]\naws_access_key_id = ${creds.AccessKey.AccessKeyId}\naws_secret_access_key = ${creds.AccessKey.SecretAccessKey}\n`
           );
-          console.log("Successfully created keys for", safeProjectName);
+          console.log(
+            chalk.green("Successfully created keys for", safeProjectName)
+          );
           return;
         });
     },
-    skip: () => !isApp
+    skip: () => !isApp,
   },
   {
     title: "Create Workspace",
@@ -931,5 +1039,5 @@ const run = async () => {
 };
 
 run()
-  .then(() => console.log(`${projectName} Ready!`))
+  .then(() => console.log(chalk.greenBright(`${projectName} Ready!`)))
   .catch((e) => console.error(e));
