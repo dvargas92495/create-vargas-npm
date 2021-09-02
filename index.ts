@@ -132,6 +132,7 @@ const tasks: {
               AddressLine1,
               AddressLine2,
               City,
+              PhoneNumber,
               State,
               ZipCode,
             };
