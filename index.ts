@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import validateNpmName from "validate-npm-package-name";
 import chalk from "chalk";
-import fs from "fs";
+import fs, { stat } from "fs";
 import path from "path";
 import os from "os";
 import spawn, { sync } from "cross-spawn";
@@ -59,6 +59,47 @@ const checkAvailability = (): Promise<string> =>
     .then((r) =>
       r.Availability === "PENDING" ? checkAvailability() : r.Availability
     );
+
+const checkDomainStatus = (OperationId: string): Promise<void> =>
+  domains
+    .getOperationDetail({ OperationId })
+    .promise()
+    .then((d) => {
+      if (d.Status === "IN_PROGRESS" || d.Status === "SUBMITTED") {
+        console.log(chalk.yellow("Checking again at", new Date().toJSON()));
+        return new Promise((resolve) =>
+          setTimeout(() => resolve(checkDomainStatus(OperationId)), 30000)
+        );
+      } else if (d.Status === "SUCCESSFUL") {
+        console.log(
+          chalk.green("Domain successfully registered at", new Date().toJSON())
+        );
+        return;
+      } else {
+        console.log(chalk.red(JSON.stringify(d)));
+        throw new Error("Failed to register domain. aborting...");
+      }
+    });
+
+const checkGhStatus = (id: string): Promise<void> =>
+  axios
+    .get(
+      `https://api.github.com/repos/dvargas92495/${projectName}/actions/runs/${id}`
+    )
+    .then((r) => {
+      if (r.data.status === "queued" || r.data.status === "in_progress") {
+        console.log(chalk.yellow("Checking again at", new Date().toJSON()));
+        return new Promise((resolve) =>
+          setTimeout(() => resolve(checkGhStatus(id)), 30000)
+        );
+      } else if (r.data.status === "completed") {
+        console.log(chalk.green("Site deployed at", new Date().toJSON()));
+        return;
+      } else {
+        console.log(chalk.red(r.data.status));
+        throw new Error("Failed to deploy site. aborting...");
+      }
+    });
 
 const tasks: {
   title: string;
@@ -157,7 +198,7 @@ const tasks: {
               DurationInYears: 1,
             })
             .promise()
-            .then((r) =>
+            .then((r) => {
               console.log(
                 chalk.green(
                   "Successfully bought",
@@ -165,8 +206,9 @@ const tasks: {
                   "operation id:",
                   r.OperationId
                 )
-              )
-            );
+              );
+              return checkDomainStatus(r.OperationId);
+            });
         });
       });
     },
@@ -192,6 +234,8 @@ const tasks: {
                 format: `prettier --write "**/*.tsx"`,
                 lint: `eslint . --ext .ts,.tsx`,
                 api: "localhost-lambdas",
+                build: "fuego build",
+                deploy: "fuego deploy",
               },
             }
           : {
@@ -379,7 +423,7 @@ jobs:
     skip: () => !isApp,
   },
   {
-    title: "Write lambda.yaml",
+    title: "Write lambdas.yaml",
     task: () => {
       fs.mkdirSync(path.join(root, ".github", "workflows"), {
         recursive: true,
@@ -388,31 +432,32 @@ jobs:
         path.join(root, ".github", "workflows", "lambdas.yaml"),
         `name: Publish Lambda
 on:
-push:
-  branches: main
-  paths:
-    - "lambdas/*"
-    - ".github/workflows/lambda.yaml"
+  push:
+    branches: main
+    paths:
+      - "lambdas/**"
+      - "src/**"
+      - ".github/workflows/lambdas.yaml"
 
 env:
   AWS_ACCESS_KEY_ID: \${{ secrets.DEPLOY_AWS_ACCESS_KEY }}
   AWS_SECRET_ACCESS_KEY: \${{ secrets.DEPLOY_AWS_ACCESS_SECRET }}
 
 jobs:
-deploy:
-  runs-on: ubuntu-20.04
-  steps:
-    - uses: actions/checkout@v2
-    - name: Use Node.js 12.16.1
-      uses: actions/setup-node@v1
-      with:
-        node-version: 12.16.1
-    - name: install
-      run: npm install
-    - name: build
-      run: npm run build:api
-    - name: deploy
-      run: npm run deploy:api
+  deploy:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Use Node.js 12.16.1
+        uses: actions/setup-node@v1
+        with:
+          node-version: 12.16.1
+      - name: install
+        run: npm install
+      - name: build
+        run: npm run build:api
+      - name: deploy
+        run: npm run deploy:api
 `
       );
     },
@@ -511,6 +556,7 @@ SOFTWARE.
                 "@types/aws-lambda",
                 "@types/react",
                 "@types/react-dom",
+                "fuegojs",
                 "localhost-lambdas",
                 "tslint-react-hooks",
               ]
@@ -589,12 +635,10 @@ export default run;
       return fs.writeFileSync(
         path.join(root, "pages", "index.tsx"),
         `import React from "react";
-import ReactDOMServer from "react-dom/server";
-import fs from "fs";
 
 const Home: React.FunctionComponent = () => <div>Welcome!</div>;
 
-fs.writeFileSync("index.html", ReactDOMServer.renderToString(<Home/>));
+export default Home;
 `
       );
     },
@@ -707,11 +751,6 @@ module "aws-serverless-backend" {
     tags = {
         Application = "${safeProjectName}"
     }
-}
-
-provider "github" {
-  owner = "dvargas92495"
-  token = var.github_token
 }
 
 resource "github_actions_secret" "deploy_aws_access_key" {
@@ -912,7 +951,7 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
         )
         .then((creds) => {
           process.env.AWS_ACCESS_KEY_ID = creds.AccessKey.AccessKeyId;
-          process.env.AWS_ACCESS_KEY_SECRET = creds.AccessKey.SecretAccessKey;
+          process.env.AWS_SECRET_ACCESS_KEY = creds.AccessKey.SecretAccessKey;
           fs.appendFileSync(
             path.resolve(`${process.env.HOME}/.aws/credentials`),
             `[${safeProjectName}]\naws_access_key_id = ${creds.AccessKey.AccessKeyId}\naws_secret_access_key = ${creds.AccessKey.SecretAccessKey}\n`
@@ -926,12 +965,19 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
     skip: () => !isApp,
   },
   {
-    title: "Create Workspace",
+    title: "Create Workspace And Kick off Run",
     task: () => {
       const tfOpts = {
         headers: {
           Authorization: `Bearer ${terraformOrganizationToken}`,
           "Content-Type": "application/vnd.api+json",
+        },
+      };
+      const userTfOpts = {
+        ...tfOpts,
+        headers: {
+          ...tfOpts.headers,
+          Authorization: `Bearer ${process.env.TERRAFORM_USER_TOKEN}`,
         },
       };
       return axios
@@ -1000,36 +1046,98 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
                 tfOpts
               )
             )
-          ).then(() =>
-            axios.post(
-              `https://app.terraform.io/api/v2/runs`,
-              {
-                data: {
-                  attributes: {
-                    message: "Kicking off first run",
-                  },
-                  type: "runs",
-                  relationships: {
-                    workspace: {
-                      data: {
-                        type: "workspaces",
-                        id,
+          )
+            .then(() =>
+              axios.post(
+                `https://app.terraform.io/api/v2/runs`,
+                {
+                  data: {
+                    attributes: {
+                      message: "Kicking off first run",
+                    },
+                    type: "runs",
+                    relationships: {
+                      workspace: {
+                        data: {
+                          type: "workspaces",
+                          id,
+                        },
                       },
                     },
                   },
                 },
-              },
-              {
-                ...tfOpts,
-                headers: {
-                  ...tfOpts.headers,
-                  Authorization: `Bearer ${process.env.TERRAFORM_USER_TOKEN}`,
-                },
-              }
+                userTfOpts
+              )
             )
-          )
+            .then((r) => {
+              const runId = r.data.data.id;
+              console.log(chalk.green(`Successfully kicked off run ${runId}`));
+              const checkTerraformStatus = (): Promise<void> =>
+                axios
+                  .get(
+                    `https://app.terraform.io/api/v2/runs/${runId}`,
+                    userTfOpts
+                  )
+                  .then((d) => {
+                    const { status } = d.data.data.attributes;
+                    if (
+                      status === "pending" ||
+                      status === "planning" ||
+                      status === "applying"
+                    ) {
+                      console.log(
+                        chalk.yellow("Checking again at", new Date().toJSON())
+                      );
+                      return new Promise((resolve) =>
+                        setTimeout(() => resolve(checkTerraformStatus()), 30000)
+                      );
+                    } else if (status === "applied") {
+                      console.log(
+                        chalk.green(
+                          "Resources successfully created at",
+                          new Date().toJSON()
+                        )
+                      );
+                      return;
+                    } else {
+                      console.log(
+                        chalk.red(JSON.stringify(d.data.data.attributes))
+                      );
+                      throw new Error(
+                        "Failed to create resources. aborting..."
+                      );
+                    }
+                  });
+            })
         );
     },
+    skip: () => !isApp,
+  },
+  {
+    title: "Kick off first action",
+    task: () =>
+      axios
+        .post(
+          `https://api.github.com/repos/dvargas92495/${projectName}/actions/workflows/main.yaml/dispatches`,
+          { ref: "main" },
+          githubOpts
+        )
+        .then(
+          () =>
+            new Promise((resolve) =>
+              setTimeout(
+                () =>
+                  resolve(
+                    axios
+                      .get(
+                        `https://api.github.com/repos/dvargas92495/${projectName}/actions/runs`
+                      )
+                      .then((r) => checkGhStatus(r.data.workflow_runs[0].id))
+                  ),
+                10000
+              )
+            )
+        ),
     skip: () => !isApp,
   },
 ];
@@ -1059,4 +1167,4 @@ const run = async () => {
 
 run()
   .then(() => console.log(chalk.greenBright(`${projectName} Ready!`)))
-  .catch((e) => console.error(e));
+  .catch((e) => console.error(chalk.redBright(e)));
