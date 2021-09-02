@@ -52,6 +52,14 @@ const getHostedZoneIdByName = async (domain: string) => {
   return null;
 };
 
+const checkAvailability = (): Promise<string> =>
+  domains
+    .checkDomainAvailability({ DomainName: projectName })
+    .promise()
+    .then((r) =>
+      r.Availability === "PENDING" ? checkAvailability() : r.Availability
+    );
+
 const tasks: {
   title: string;
   task: () => void | Promise<void>;
@@ -89,68 +97,77 @@ const tasks: {
             )
           );
         }
-        return domains
-          .checkDomainAvailability({ DomainName: projectName })
-          .promise()
-          .then((r) => {
-            if (r.Availability !== "AVAILABLE") {
-              return domains
-                .getDomainSuggestions({
-                  DomainName: projectName,
-                  OnlyAvailable: true,
-                  SuggestionCount: 10,
-                })
-                .promise()
-                .then((s) => {
-                  throw new Error(
-                    `Domain ${projectName} is not available and not owned (${r.Availability}), try one of these:\n${s.SuggestionsList?.map(
-                      (s) => `- ${s.DomainName}`
-                    )}\naborting...`
-                  );
-                });
-            }
-            console.log(chalk.blue("Buying domain", projectName));
-            const {
-              AddressLine1 = "",
-              AddressLine2 = "",
-              City = "",
-              State = "",
-              ZipCode = "",
-              PhoneNumber = "",
-            } = JSON.parse(process.env.CONTACT_DETAIL || "{}");
-            if (!AddressLine1 || !AddressLine2 || !City || !State || !ZipCode || !PhoneNumber) {
-              throw new Error(
-                "Invalid Address entered in CONTACT_DETAIL stringified JSON env variable"
-              );
-            }
-            const Contact = {
-              ContactType: "PERSON",
-              CountryCode: "US",
-              Email: "dvargas92495@gmail.com",
-              FirstName: "David",
-              LastName: "Vargas",
-              AddressLine1,
-              AddressLine2,
-              City,
-              PhoneNumber,
-              State,
-              ZipCode,
-            };
+        return checkAvailability().then((r) => {
+          if (r !== "AVAILABLE") {
             return domains
-              .registerDomain({
-                TechContact: Contact,
-                RegistrantContact: Contact,
-                AdminContact: Contact,
+              .getDomainSuggestions({
                 DomainName: projectName,
-                DurationInYears: 1,
+                OnlyAvailable: true,
+                SuggestionCount: 10,
               })
               .promise()
-              .then((r) =>
-                console.log(
-                  chalk.green("Successfully bought", projectName, "operation id:", r.OperationId)
+              .then((s) => {
+                throw new Error(
+                  `Domain ${projectName} is not available and not owned (${r}), try one of these:\n${s.SuggestionsList?.map(
+                    (s) => `- ${s.DomainName}`
+                  )}\naborting...`
+                );
+              });
+          }
+          console.log(chalk.blue("Buying domain", projectName));
+          const {
+            AddressLine1 = "",
+            AddressLine2 = "",
+            City = "",
+            State = "",
+            ZipCode = "",
+            PhoneNumber = "",
+          } = JSON.parse(process.env.CONTACT_DETAIL || "{}");
+          if (
+            !AddressLine1 ||
+            !AddressLine2 ||
+            !City ||
+            !State ||
+            !ZipCode ||
+            !PhoneNumber
+          ) {
+            throw new Error(
+              "Invalid Address entered in CONTACT_DETAIL stringified JSON env variable"
+            );
+          }
+          const Contact = {
+            ContactType: "PERSON",
+            CountryCode: "US",
+            Email: "dvargas92495@gmail.com",
+            FirstName: "David",
+            LastName: "Vargas",
+            AddressLine1,
+            AddressLine2,
+            City,
+            PhoneNumber,
+            State,
+            ZipCode,
+          };
+          return domains
+            .registerDomain({
+              TechContact: Contact,
+              RegistrantContact: Contact,
+              AdminContact: Contact,
+              DomainName: projectName,
+              DurationInYears: 1,
+            })
+            .promise()
+            .then((r) =>
+              console.log(
+                chalk.green(
+                  "Successfully bought",
+                  projectName,
+                  "operation id:",
+                  r.OperationId
                 )
-              );
-          });
+              )
+            );
+        });
       });
     },
     skip: () => !isApp,
