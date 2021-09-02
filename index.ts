@@ -101,9 +101,9 @@ const tasks: {
                   SuggestionCount: 10,
                 })
                 .promise()
-                .then((r) => {
+                .then((s) => {
                   throw new Error(
-                    `Domain ${projectName} is not available and not owned, try one of these:\n${r.SuggestionsList?.map(
+                    `Domain ${projectName} is not available and not owned (${r.Availability}), try one of these:\n${s.SuggestionsList?.map(
                       (s) => `- ${s.DomainName}`
                     )}\naborting...`
                   );
@@ -116,8 +116,9 @@ const tasks: {
               City = "",
               State = "",
               ZipCode = "",
+              PhoneNumber = "",
             } = JSON.parse(process.env.CONTACT_DETAIL || "{}");
-            if (!AddressLine1 || !AddressLine2 || !City || !State || !ZipCode) {
+            if (!AddressLine1 || !AddressLine2 || !City || !State || !ZipCode || !PhoneNumber) {
               throw new Error(
                 "Invalid Address entered in CONTACT_DETAIL stringified JSON env variable"
               );
