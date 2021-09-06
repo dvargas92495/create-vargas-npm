@@ -9,6 +9,7 @@ import sodium from "tweetsodium";
 import axios from "axios";
 import randomstring from "randomstring";
 import AWS from "aws-sdk";
+import mysql from "mysql";
 
 AWS.config.credentials = new AWS.SharedIniFileCredentials({
   profile: "davidvargas",
@@ -18,6 +19,7 @@ const route53 = new AWS.Route53({ apiVersion: "2013-04-01" });
 const domains = new AWS.Route53Domains({
   apiVersion: "2014-05-15",
 });
+const rds = new AWS.RDS({ apiVersion: "2014-10-31" });
 const npmToken = process.env.NPM_TOKEN || "";
 const terraformOrganizationToken = process.env.TERRAFORM_ORGANIZATION_TOKEN;
 const projectName = process.argv[2] || "";
@@ -212,6 +214,58 @@ const tasks: {
         });
       });
     },
+    skip: () => !isApp,
+  },
+  {
+    title: "Create RDS DB",
+    task: () =>
+      rds
+        .describeDBInstances({ DBInstanceIdentifier: "vargas-arts" })
+        .promise()
+        .then((r) => {
+          if (!r.DBInstances?.length) throw new Error('Could not find main RDS instance');
+          const { Address, Port } = r.DBInstances[0].Endpoint || {};
+          const connection = mysql.createConnection({
+            host: Address,
+            port: Port,
+            user: "dvargas92495",
+            password: process.env.RDS_MASTER_PASSWORD,
+          });
+          connection.connect();
+          const mysqlName = safeProjectName.replace(/-/g, "_");
+          process.env.MYSQL_PASSWORD = randomstring.generate(16);
+          return new Promise((resolve) =>
+            connection.query(
+              `CREATE DATABASE ${mysqlName}`,
+              resolve
+            )
+          )
+            .then(
+              () =>
+                new Promise((resolve) =>
+                  connection.query(
+                    `CREATE USER '${mysqlName}'@'%' IDENTIFIED BY '${process.env.MYSQL_PASSWORD}'`,
+                    resolve
+                  )
+                )
+            )
+            .then(
+              () =>
+                new Promise((resolve) =>
+                  connection.query(
+                    `GRANT ALL PRIVILEGES ON ${mysqlName} . * TO '${mysqlName}'@'%'`,
+                    resolve
+                  )
+                )
+            )
+            .then(
+              () =>
+                new Promise((resolve) =>
+                  connection.query(`FLUSH PRIVILEGES`, resolve)
+                )
+            )
+            .then(() => connection.end());
+        }),
     skip: () => !isApp,
   },
   {
@@ -442,6 +496,8 @@ on:
 env:
   AWS_ACCESS_KEY_ID: \${{ secrets.DEPLOY_AWS_ACCESS_KEY }}
   AWS_SECRET_ACCESS_KEY: \${{ secrets.DEPLOY_AWS_ACCESS_SECRET }}
+  AWS_REGION: us-east-1
+  MYSQL_PASSWORD: \${{ secrets.MYSQL_PASSWORD }}
 
 jobs:
   deploy:
@@ -777,6 +833,7 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
         fs.writeFileSync(
           path.join(root, ".env"),
           `API_URL=http://localhost:3003/dev
+MYSQL_PASSWORD=${process.env.MYSQL_PASSWORD}
 `
         )
       );
@@ -1029,6 +1086,7 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
               { key: "aws_secret_token", env: "AWS_SECRET_ACCESS_KEY" },
               { key: "secret", value: randomstring.generate(32) },
               { key: "github_token", env: "GITHUB_TOKEN" },
+              { key: "mysql_password", env: "MYSQL_PASSWORD"}
             ].map(({ key, env, value }) =>
               axios.post(
                 `https://app.terraform.io/api/v2/workspaces/${id}/vars`,
