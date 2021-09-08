@@ -8,7 +8,7 @@ import spawn, { sync } from "cross-spawn";
 import sodium from "tweetsodium";
 import axios from "axios";
 import randomstring from "randomstring";
-import AWS from "aws-sdk";
+import AWS, { MarketplaceCommerceAnalytics } from "aws-sdk";
 import mysql from "mysql";
 
 AWS.config.credentials = new AWS.SharedIniFileCredentials({
@@ -24,6 +24,7 @@ const npmToken = process.env.NPM_TOKEN || "";
 const terraformOrganizationToken = process.env.TERRAFORM_ORGANIZATION_TOKEN;
 const projectName = process.argv[2] || "";
 const safeProjectName = projectName.replace(/\./g, "-");
+const mysqlName = safeProjectName.replace(/-/g, "_");
 const opts = process.argv.slice(3);
 const isReact = opts.includes("--react");
 const isApp = opts.includes("--app");
@@ -232,8 +233,9 @@ const tasks: {
             password: process.env.RDS_MASTER_PASSWORD,
           });
           connection.connect();
-          const mysqlName = safeProjectName.replace(/-/g, "_");
           process.env.MYSQL_PASSWORD = randomstring.generate(16);
+          process.env.MYSQL_HOST = Address;
+          process.env.MYSQL_PORT = `${Port}`;
           return new Promise((resolve) =>
             connection.query(
               `CREATE DATABASE ${mysqlName}`,
@@ -290,6 +292,7 @@ const tasks: {
                 api: "localhost-lambdas",
                 build: "fuego build",
                 deploy: "fuego deploy",
+                migrate: "fuego migrate",
               },
             }
           : {
@@ -479,9 +482,6 @@ jobs:
   {
     title: "Write lambdas.yaml",
     task: () => {
-      fs.mkdirSync(path.join(root, ".github", "workflows"), {
-        recursive: true,
-      });
       return fs.writeFileSync(
         path.join(root, ".github", "workflows", "lambdas.yaml"),
         `name: Publish Lambda
@@ -514,6 +514,44 @@ jobs:
         run: npm run build:api
       - name: deploy
         run: npm run deploy:api
+`
+      );
+    },
+    skip: () => !isApp,
+  },
+  {
+    title: "Write db.yaml",
+    task: () => {
+      return fs.writeFileSync(
+        path.join(root, ".github", "workflows", "db.yaml"),
+        `name: Migrate DB
+on:
+  push:
+    branches: main
+    paths:
+      - "db/**"
+      - ".github/workflows/db.yaml"
+
+env:
+  DB_PASSWORD: \${{ secrets.MYSQL_PASSWORD }}
+  DB_USER: ${mysqlName}
+  DB_NAME: ${mysqlName}
+  DB_HOST: ${process.env.MYSQL_HOST}
+  DB_PORT: ${process.env.MYSQL_PORT}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+      - name: Use Node.js 12.16.1
+        uses: actions/setup-node@v1
+        with:
+          node-version: 12.16.1
+      - name: install
+        run: npm install
+      - name: migrate
+        run: npm run migrate
 `
       );
     },
