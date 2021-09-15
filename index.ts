@@ -8,7 +8,7 @@ import spawn, { sync } from "cross-spawn";
 import sodium from "tweetsodium";
 import axios from "axios";
 import randomstring from "randomstring";
-import AWS, { MarketplaceCommerceAnalytics } from "aws-sdk";
+import AWS from "aws-sdk";
 import mysql from "mysql";
 
 AWS.config.credentials = new AWS.SharedIniFileCredentials({
@@ -224,7 +224,8 @@ const tasks: {
         .describeDBInstances({ DBInstanceIdentifier: "vargas-arts" })
         .promise()
         .then((r) => {
-          if (!r.DBInstances?.length) throw new Error('Could not find main RDS instance');
+          if (!r.DBInstances?.length)
+            throw new Error("Could not find main RDS instance");
           const { Address, Port } = r.DBInstances[0].Endpoint || {};
           const connection = mysql.createConnection({
             host: Address,
@@ -237,10 +238,7 @@ const tasks: {
           process.env.MYSQL_HOST = Address;
           process.env.MYSQL_PORT = `${Port}`;
           return new Promise((resolve) =>
-            connection.query(
-              `CREATE DATABASE ${mysqlName}`,
-              resolve
-            )
+            connection.query(`CREATE DATABASE ${mysqlName}`, resolve)
           )
             .then(
               () =>
@@ -292,6 +290,7 @@ const tasks: {
                 api: "localhost-lambdas",
                 build: "fuego build",
                 deploy: "fuego deploy",
+                fe: "fuego fe",
                 migrate: "fuego migrate",
               },
             }
@@ -323,8 +322,11 @@ const tasks: {
                 : {}),
             }),
       };
-      if (isReact) {
-        packageJson;
+      if (isApp) {
+        fs.writeFileSync(
+          path.join(root, "fuego.json"),
+          JSON.stringify({ renderBodyFirst: true }, null, 2) + os.EOL
+        );
       }
 
       return fs.writeFileSync(
@@ -420,10 +422,10 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
-      - name: Use Node.js 12.16.1
+      - name: Use Node.js 14.17.6
         uses: actions/setup-node@v1
         with:
-          node-version: 12.16.1
+          node-version: 14.17.6
       - name: install
         run: npm install
       - uses: JS-DevTools/npm-publish@v1
@@ -464,10 +466,10 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
-      - name: Use Node.js 12.16.1
+      - name: Use Node.js 14.17.6
         uses: actions/setup-node@v1
         with:
-          node-version: 12.16.1
+          node-version: 14.17.6
       - name: install
         run: npm install
       - name: build
@@ -504,10 +506,10 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
-      - name: Use Node.js 12.16.1
+      - name: Use Node.js 14.17.6
         uses: actions/setup-node@v1
         with:
-          node-version: 12.16.1
+          node-version: 14.17.6
       - name: install
         run: npm install
       - name: build
@@ -544,10 +546,10 @@ jobs:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2
-      - name: Use Node.js 12.16.1
+      - name: Use Node.js 14.17.6
         uses: actions/setup-node@v1
         with:
-          node-version: 12.16.1
+          node-version: 14.17.6
       - name: install
         run: npm install
       - name: migrate
@@ -567,6 +569,7 @@ build
 dist
 out
 .env
+_fuego
 `
       );
     },
@@ -1124,7 +1127,7 @@ MYSQL_PASSWORD=${process.env.MYSQL_PASSWORD}
               { key: "aws_secret_token", env: "AWS_SECRET_ACCESS_KEY" },
               { key: "secret", value: randomstring.generate(32) },
               { key: "github_token", env: "GITHUB_TOKEN" },
-              { key: "mysql_password", env: "MYSQL_PASSWORD"}
+              { key: "mysql_password", env: "MYSQL_PASSWORD" },
             ].map(({ key, env, value }) =>
               axios.post(
                 `https://app.terraform.io/api/v2/workspaces/${id}/vars`,
