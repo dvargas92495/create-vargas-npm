@@ -10,6 +10,7 @@ import axios from "axios";
 import randomstring from "randomstring";
 import AWS from "aws-sdk";
 import mysql from "mysql";
+import readline from "readline";
 
 AWS.config.credentials = new AWS.SharedIniFileCredentials({
   profile: "davidvargas",
@@ -34,6 +35,12 @@ const githubOpts = {
     Authorization: `token ${process.env.GITHUB_TOKEN}`,
   },
 };
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+});
+const rlp = (q: string) =>
+  new Promise<string>((resolve) => rl.question(q, resolve));
 
 const getHostedZoneIdByName = async (domain: string) => {
   let finished = false;
@@ -460,6 +467,8 @@ env:
   API_URL: api.${projectName}
   AWS_ACCESS_KEY_ID: \${{ secrets.DEPLOY_AWS_ACCESS_KEY }}
   AWS_SECRET_ACCESS_KEY: \${{ secrets.DEPLOY_AWS_ACCESS_SECRET }}
+  AWS_REGION: us-east-1
+  CLERK_FRONTEND_API: clerk.${projectName}
 
 jobs:
   deploy:
@@ -499,6 +508,7 @@ env:
   AWS_ACCESS_KEY_ID: \${{ secrets.DEPLOY_AWS_ACCESS_KEY }}
   AWS_SECRET_ACCESS_KEY: \${{ secrets.DEPLOY_AWS_ACCESS_SECRET }}
   AWS_REGION: us-east-1
+  CLERK_API_KEY: \${{ secrets.CLERK_API_KEY }}
   MYSQL_PASSWORD: \${{ secrets.MYSQL_PASSWORD }}
 
 jobs:
@@ -649,6 +659,8 @@ SOFTWARE.
             : []),
           ...(isApp
             ? [
+                "@clerk/clerk-react",
+                "@clerk/clerk-sdk-node",
                 "@types/node",
                 "@types/aws-lambda",
                 "@types/react",
@@ -773,6 +785,42 @@ test("Runs Default", () => {
     skip: () => isApp,
   },
   {
+    title: "Set up Clerk",
+    task: () => {
+      return rlp(
+        `Create an application on https://dashboard.clerk.dev/applications called ${projectName}. Press enter when done.`
+      )
+        .then(() =>
+          rlp("Enter the developer api key:").then(
+            (k) => (process.env.CLERK_DEV_API_KEY = k)
+          )
+        )
+        .then(() =>
+          rlp("Enter the developer clerk frontend API url:").then(
+            (k) => (process.env.CLERK_DEV_FRONTEND_API = k)
+          )
+        )
+        .then(() =>
+          console.log(
+            chalk.blue(
+              "Check on custom urls in redirect config. Then create production instance on same settings.\nCurrently, there's a Clerk bug where you have to duplicate this work in production."
+            )
+          )
+        )
+        .then(() =>
+          rlp("Enter the production api key:").then(
+            (k) => (process.env.CLERK_API_KEY = k)
+          )
+        )
+        .then(() =>
+          rlp("Enter the clerk production id, found on the DNS page:").then(
+            (k) => (process.env.CLERK_DNS_ID = k)
+          )
+        );
+    },
+    skip: () => !isApp,
+  },
+  {
     title: "Write main.tf",
     task: () => {
       return Promise.resolve(
@@ -808,6 +856,14 @@ variable "github_token" {
 
 variable "secret" {
   type = string
+}
+
+variable "clerk_api_key" {
+    type = string
+}
+
+variable "clerk_dev_api_key" {
+    type = string
 }
 
 provider "aws" {
@@ -850,6 +906,14 @@ module "aws-serverless-backend" {
     }
 }
 
+module "aws_clerk" {
+  source   = "dvargas92495/clerk/aws"
+  version = "1.0.0"
+
+  zone_id  = module.aws_static_site.route53_zone_id
+  clerk_id = "${process.env.CLERK_DNS_ID}"
+}
+
 resource "github_actions_secret" "deploy_aws_access_key" {
   repository       = "${projectName}"
   secret_name      = "DEPLOY_AWS_ACCESS_KEY"
@@ -861,20 +925,18 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
   secret_name      = "DEPLOY_AWS_ACCESS_SECRET"
   plaintext_value  = module.aws_static_site.deploy-secret
 }
-`
-        )
-      );
-    },
-    skip: () => !isApp,
-  },
-  {
-    title: "Write .env",
-    task: () => {
-      return Promise.resolve(
-        fs.writeFileSync(
-          path.join(root, ".env"),
-          `API_URL=http://localhost:3003/dev
-MYSQL_PASSWORD=${process.env.MYSQL_PASSWORD}
+
+resource "github_actions_secret" "clerk_api_key" {
+  repository       = "${projectName}"
+  secret_name      = "CLERK_API_KEY"
+  plaintext_value  = var.clerk_api_key
+}
+
+resource "github_actions_secret" "clerk_dev_api_key" {
+  repository       = "${projectName}"
+  secret_name      = "CLERK_DEV_API_KEY"
+  plaintext_value  = var.clerk_dev_api_key
+}
 `
         )
       );
@@ -1209,6 +1271,22 @@ MYSQL_PASSWORD=${process.env.MYSQL_PASSWORD}
                   });
             })
         );
+    },
+    skip: () => !isApp,
+  },
+  {
+    title: "Write .env",
+    task: () => {
+      return Promise.resolve(
+        fs.writeFileSync(
+          path.join(root, ".env"),
+          `API_URL=http://localhost:3003/dev
+CLERK_API_KEY=${process.env.CLERK_DEV_API_KEY}
+CLERK_FRONTEND_API=${process.env.CLERK_DEV_FRONTEND_API}
+MYSQL_PASSWORD=${process.env.MYSQL_PASSWORD}
+`
+        )
+      );
     },
     skip: () => !isApp,
   },
