@@ -862,10 +862,6 @@ variable "clerk_api_key" {
     type = string
 }
 
-variable "clerk_dev_api_key" {
-    type = string
-}
-
 provider "aws" {
   region = "us-east-1"
   access_key = var.aws_access_token
@@ -930,12 +926,6 @@ resource "github_actions_secret" "clerk_api_key" {
   repository       = "${projectName}"
   secret_name      = "CLERK_API_KEY"
   plaintext_value  = var.clerk_api_key
-}
-
-resource "github_actions_secret" "clerk_dev_api_key" {
-  repository       = "${projectName}"
-  secret_name      = "CLERK_DEV_API_KEY"
-  plaintext_value  = var.clerk_dev_api_key
 }
 `
         )
