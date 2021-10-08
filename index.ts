@@ -294,11 +294,13 @@ const tasks: {
               scripts: {
                 format: `prettier --write "**/*.tsx"`,
                 lint: `eslint . --ext .ts,.tsx`,
-                api: "localhost-lambdas",
+                api: "fuego api",
                 build: "fuego build",
+                compile: "fuego compile",
                 deploy: "fuego deploy",
                 fe: "fuego fe",
                 migrate: "fuego migrate",
+                publish: "fuego publish",
               },
             }
           : {
@@ -491,18 +493,18 @@ jobs:
     skip: () => !isApp,
   },
   {
-    title: "Write lambdas.yaml",
+    title: "Write api.yaml",
     task: () => {
       return fs.writeFileSync(
-        path.join(root, ".github", "workflows", "lambdas.yaml"),
+        path.join(root, ".github", "workflows", "api.yaml"),
         `name: Publish Lambda
 on:
   push:
     branches: main
     paths:
-      - "lambdas/**"
+      - "functions/**"
       - "src/**"
-      - ".github/workflows/lambdas.yaml"
+      - ".github/workflows/api.yaml"
 
 env:
   AWS_ACCESS_KEY_ID: \${{ secrets.DEPLOY_AWS_ACCESS_KEY }}
@@ -523,9 +525,9 @@ jobs:
       - name: install
         run: npm install
       - name: build
-        run: npm run build:api
+        run: npm run compile
       - name: deploy
-        run: npm run deploy:api
+        run: npm run publish
 `
       );
     },
@@ -666,7 +668,6 @@ SOFTWARE.
                 "@types/react",
                 "@types/react-dom",
                 "fuegojs",
-                "localhost-lambdas",
                 "tslint-react-hooks",
               ]
             : ["@types/jest", "cross-env", "jest", "ts-jest"]),
@@ -694,7 +695,7 @@ SOFTWARE.
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
         const dependencies = ["react", "react-dom"];
-        if (isApp) dependencies.push("@dvargas92495/ui", "aws-sdk");
+        if (isApp) dependencies.push("@dvargas92495/ui", "aws-sdk", "axios");
         const child = spawn("npm", ["install"].concat(dependencies), {
           stdio: "inherit",
         });
@@ -904,7 +905,7 @@ module "aws-serverless-backend" {
 
 module "aws_clerk" {
   source   = "dvargas92495/clerk/aws"
-  version = "1.0.0"
+  version  = "1.0.1"
 
   zone_id  = module.aws_static_site.route53_zone_id
   clerk_id = "${process.env.CLERK_DNS_ID}"
@@ -1270,7 +1271,7 @@ resource "github_actions_secret" "clerk_api_key" {
       return Promise.resolve(
         fs.writeFileSync(
           path.join(root, ".env"),
-          `API_URL=http://localhost:3003/dev
+          `API_URL=http://localhost:3003
 CLERK_API_KEY=${process.env.CLERK_DEV_API_KEY}
 CLERK_FRONTEND_API=${process.env.CLERK_DEV_FRONTEND_API}
 MYSQL_PASSWORD=${process.env.MYSQL_PASSWORD}
