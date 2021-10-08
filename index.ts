@@ -497,18 +497,19 @@ jobs:
     task: () => {
       return fs.writeFileSync(
         path.join(root, ".github", "workflows", "api.yaml"),
-        `name: Publish Lambda
+        `name: Publish API
 on:
   push:
     branches: main
     paths:
       - "functions/**"
       - "src/**"
+      - "package.json"
       - ".github/workflows/api.yaml"
 
 env:
-  AWS_ACCESS_KEY_ID: \${{ secrets.DEPLOY_AWS_ACCESS_KEY }}
-  AWS_SECRET_ACCESS_KEY: \${{ secrets.DEPLOY_AWS_ACCESS_SECRET }}
+  AWS_ACCESS_KEY_ID: \${{ secrets.LAMBDA_AWS_ACCESS_KEY }}
+  AWS_SECRET_ACCESS_KEY: \${{ secrets.LAMBDA_AWS_ACCESS_SECRET }}
   AWS_REGION: us-east-1
   CLERK_API_KEY: \${{ secrets.CLERK_API_KEY }}
   MYSQL_PASSWORD: \${{ secrets.MYSQL_PASSWORD }}
@@ -921,6 +922,18 @@ resource "github_actions_secret" "deploy_aws_access_secret" {
   repository       = "${projectName}"
   secret_name      = "DEPLOY_AWS_ACCESS_SECRET"
   plaintext_value  = module.aws_static_site.deploy-secret
+}
+
+resource "github_actions_secret" "lambda_aws_access_key" {
+  repository       = "${projectName}"
+  secret_name      = "LAMBDA_AWS_ACCESS_KEY"
+  plaintext_value  = module.aws-serverless-backend.access_key
+}
+
+resource "github_actions_secret" "lambda_aws_access_secret" {
+  repository       = "${projectName}"
+  secret_name      = "LAMBDA_AWS_ACCESS_SECRET"
+  plaintext_value  = module.aws-serverless-backend.secret_key
 }
 
 resource "github_actions_secret" "clerk_api_key" {
