@@ -466,7 +466,7 @@ on:
       - ".github/workflows/main.yaml"
 
 env:
-  API_URL: api.${projectName}
+  API_URL: https://api.${projectName}
   AWS_ACCESS_KEY_ID: \${{ secrets.DEPLOY_AWS_ACCESS_KEY }}
   AWS_SECRET_ACCESS_KEY: \${{ secrets.DEPLOY_AWS_ACCESS_SECRET }}
   AWS_REGION: us-east-1
@@ -877,7 +877,7 @@ provider "github" {
 
 module "aws_static_site" {
   source  = "dvargas92495/static-site/aws"
-  version = "3.0.8"
+  version = "3.1.3"
 
   domain = "${projectName}"
   secret = var.secret
@@ -1319,6 +1319,22 @@ MYSQL_PASSWORD=${process.env.MYSQL_PASSWORD}
               )
             )
         ),
+    skip: () => !isApp,
+  },
+  {
+    title: "Manual Steps to run",
+    task: () => {
+      console.log(
+        chalk.blue(
+          "Manual steps to run:"
+        )
+      );
+      console.log(
+        chalk.blue(
+          "- Click Deploy on the Clerk Production Instance"
+        )
+      );
+    },
     skip: () => !isApp,
   },
 ];
