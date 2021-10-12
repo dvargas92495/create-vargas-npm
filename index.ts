@@ -276,6 +276,47 @@ const tasks: {
     skip: () => !isApp,
   },
   {
+    title: "Create local DB",
+    task: () => {
+      const connection = mysql.createConnection({
+        host: "localhost",
+        port: 5432,
+        user: "root",
+        password: process.env.LOCAL_MYSQL_PASSWORD,
+      });
+      connection.connect();
+      return new Promise((resolve) =>
+        connection.query(`CREATE DATABASE ${mysqlName}`, resolve)
+      )
+        .then(
+          () =>
+            new Promise((resolve) =>
+              connection.query(
+                `CREATE USER '${mysqlName}'@'%' IDENTIFIED BY '${mysqlName}'`,
+                resolve
+              )
+            )
+        )
+        .then(
+          () =>
+            new Promise((resolve) =>
+              connection.query(
+                `GRANT ALL PRIVILEGES ON ${mysqlName} . * TO '${mysqlName}'@'%'`,
+                resolve
+              )
+            )
+        )
+        .then(
+          () =>
+            new Promise((resolve) =>
+              connection.query(`FLUSH PRIVILEGES`, resolve)
+            )
+        )
+        .then(() => connection.end());
+    },
+    skip: () => !isApp,
+  },
+  {
     title: "Make Project Directory",
     task: () => fs.mkdirSync(projectName),
     skip: () => fs.existsSync(projectName),
@@ -286,7 +327,7 @@ const tasks: {
       const packageJson: any = {
         name: projectName,
         description: `Description for ${projectName}`,
-        version: "0.0.1",
+        version: "0.0.0",
         license: "MIT",
         repository: `dvargas92495/${projectName}`,
         ...(isApp
@@ -299,8 +340,10 @@ const tasks: {
                 compile: "fuego compile",
                 deploy: "fuego deploy",
                 fe: "fuego fe",
-                migrate: "fuego migrate",
+                migrate: "npm run typeorm migration:run",
                 publish: "fuego publish",
+                typeorm:
+                  "ts-node --transpile-only ./node_modules/typeorm/cli.js",
               },
             }
           : {
@@ -400,8 +443,11 @@ Description for ${projectName}
           noImplicitAny: true,
           forceConsistentCasingInFileNames: true,
           allowSyntheticDefaultImports: true,
+          experimentalDecorators: true,
+          emitDecoratorMetadata: true,
+          strictPropertyInitialization: false,
         },
-        include: ["src", ...(isApp ? ["pages", "lambdas"] : [])],
+        include: ["src", ...(isApp ? ["pages", "functions", "db"] : [])],
         exclude: ["node_modules", "**/__tests__/*"],
       };
 
@@ -512,7 +558,17 @@ env:
   AWS_SECRET_ACCESS_KEY: \${{ secrets.LAMBDA_AWS_ACCESS_SECRET }}
   AWS_REGION: us-east-1
   CLERK_API_KEY: \${{ secrets.CLERK_API_KEY }}
-  MYSQL_PASSWORD: \${{ secrets.MYSQL_PASSWORD }}
+  TYPEORM_CONNECTION: mysql
+  TYPEORM_HOST: vargas-arts.c2sjnb5f4d57.us-east-1.rds.amazonaws.com
+  TYPEORM_USERNAME: ${mysqlName}
+  TYPEORM_PASSWORD: \${{ secrets.MYSQL_PASSWORD }}
+  TYPEORM_DATABASE: ${mysqlName}
+  TYPEORM_PORT: 5432
+  TYPEORM_SYNCHRONIZE: false
+  TYPEORM_LOGGING: true
+  TYPEORM_ENTITIES: db/*.ts
+  TYPEORM_MIGRATIONS: db/migrations/*.ts
+  TYPEORM_MIGRATIONS_DIR: db/migrations
 
 jobs:
   deploy:
@@ -548,11 +604,17 @@ on:
       - ".github/workflows/db.yaml"
 
 env:
-  DB_PASSWORD: \${{ secrets.MYSQL_PASSWORD }}
-  DB_USER: ${mysqlName}
-  DB_NAME: ${mysqlName}
-  DB_HOST: ${process.env.MYSQL_HOST}
-  DB_PORT: ${process.env.MYSQL_PORT}
+  TYPEORM_CONNECTION: mysql
+  TYPEORM_HOST: vargas-arts.c2sjnb5f4d57.us-east-1.rds.amazonaws.com
+  TYPEORM_USERNAME: ${mysqlName}
+  TYPEORM_PASSWORD: \${{ secrets.MYSQL_PASSWORD }}
+  TYPEORM_DATABASE: ${mysqlName}
+  TYPEORM_PORT: 5432
+  TYPEORM_SYNCHRONIZE: false
+  TYPEORM_LOGGING: true
+  TYPEORM_ENTITIES: db/*.ts
+  TYPEORM_MIGRATIONS: db/migrations/*.ts
+  TYPEORM_MIGRATIONS_DIR: db/migrations
 
 jobs:
   deploy:
@@ -669,6 +731,7 @@ SOFTWARE.
                 "@types/react",
                 "@types/react-dom",
                 "fuegojs",
+                "ts-node",
                 "tslint-react-hooks",
               ]
             : ["@types/jest", "cross-env", "jest", "ts-jest"]),
@@ -696,7 +759,8 @@ SOFTWARE.
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
         const dependencies = ["react", "react-dom"];
-        if (isApp) dependencies.push("@dvargas92495/ui", "aws-sdk", "axios");
+        if (isApp)
+          dependencies.push("@dvargas92495/ui", "aws-sdk", "axios", "typeorm");
         const child = spawn("npm", ["install"].concat(dependencies), {
           stdio: "inherit",
         });
@@ -1287,7 +1351,17 @@ resource "github_actions_secret" "clerk_api_key" {
           `API_URL=http://localhost:3003
 CLERK_API_KEY=${process.env.CLERK_DEV_API_KEY}
 CLERK_FRONTEND_API=${process.env.CLERK_DEV_FRONTEND_API}
-MYSQL_PASSWORD=${process.env.MYSQL_PASSWORD}
+TYPEORM_CONNECTION=mysql
+TYPEORM_HOST=localhost
+TYPEORM_USERNAME=${mysqlName}
+TYPEORM_PASSWORD=${mysqlName}
+TYPEORM_DATABASE=${mysqlName}
+TYPEORM_PORT=5432
+TYPEORM_SYNCHRONIZE=false
+TYPEORM_LOGGING=true
+TYPEORM_ENTITIES=db/*.ts
+TYPEORM_MIGRATIONS=db/migrations/*.ts
+TYPEORM_MIGRATIONS_DIR=db/migrations
 `
         )
       );
@@ -1324,15 +1398,9 @@ MYSQL_PASSWORD=${process.env.MYSQL_PASSWORD}
   {
     title: "Manual Steps to run",
     task: () => {
+      console.log(chalk.blue("Manual steps to run:"));
       console.log(
-        chalk.blue(
-          "Manual steps to run:"
-        )
-      );
-      console.log(
-        chalk.blue(
-          "- Click Deploy on the Clerk Production Instance"
-        )
+        chalk.blue("- Click Deploy on the Clerk Production Instance")
       );
     },
     skip: () => !isApp,
@@ -1363,5 +1431,6 @@ const run = async () => {
 };
 
 run()
+  .then(() => rl.close())
   .then(() => console.log(chalk.greenBright(`${projectName} Ready!`)))
   .catch((e) => console.error(chalk.redBright(e)));
