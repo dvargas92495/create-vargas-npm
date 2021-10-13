@@ -23,7 +23,8 @@ const domains = new AWS.Route53Domains({
 const rds = new AWS.RDS({ apiVersion: "2014-10-31" });
 const npmToken = process.env.NPM_TOKEN || "";
 const terraformOrganizationToken = process.env.TERRAFORM_ORGANIZATION_TOKEN;
-const projectName = process.argv[2] || "";
+const rawName = process.argv[2] || "";
+const projectName = rawName.replace(/^@dvargas92495\//, '');
 const safeProjectName = projectName.replace(/\./g, "-");
 const mysqlName = safeProjectName.replace(/-/g, "_");
 const opts = process.argv.slice(3);
@@ -325,8 +326,8 @@ const tasks: {
     title: "Write Package JSON",
     task: () => {
       const packageJson: any = {
-        name: projectName,
-        description: `Description for ${projectName}`,
+        name: rawName,
+        description: `Description for ${rawName}`,
         version: "0.0.0",
         license: "MIT",
         repository: `dvargas92495/${projectName}`,
@@ -351,9 +352,7 @@ const tasks: {
               types: "dist/index.d.ts",
               scripts: {
                 prebuild: "cross-env NODE_ENV=test npm t",
-                build: `esbuild src/index.ts${
-                  isReact ? "x" : ""
-                } --outfile=dist/index.js --bundle`,
+                build: "tsc",
                 format: `prettier --write "src/**/*.ts${isReact ? "x" : ""}"`,
                 lint: `eslint . --ext .ts${isReact ? ",.tsx" : ""}`,
                 prepublishOnly: "npm run build",
@@ -443,9 +442,6 @@ Description for ${projectName}
           noImplicitAny: true,
           forceConsistentCasingInFileNames: true,
           allowSyntheticDefaultImports: true,
-          experimentalDecorators: true,
-          emitDecoratorMetadata: true,
-          strictPropertyInitialization: false,
         },
         include: ["src", ...(isApp ? ["pages", "functions", "db"] : [])],
         exclude: ["node_modules", "**/__tests__/*"],
@@ -707,7 +703,6 @@ SOFTWARE.
         const dependencies = [
           "@typescript-eslint/parser",
           "@typescript-eslint/eslint-plugin",
-          "esbuild",
           "eslint",
           "prettier",
           "tslint-config-prettier",
@@ -760,7 +755,14 @@ SOFTWARE.
       return new Promise<void>((resolve, reject) => {
         const dependencies = ["react", "react-dom"];
         if (isApp)
-          dependencies.push("@dvargas92495/ui", "aws-sdk", "axios", "typeorm");
+          dependencies.push(
+            "@clerk/clerk-react",
+            "@clerk/clerk-sdk-node",
+            "@dvargas92495/ui",
+            "aws-sdk",
+            "axios",
+            "typeorm"
+          );
         const child = spawn("npm", ["install"].concat(dependencies), {
           stdio: "inherit",
         });
