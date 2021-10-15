@@ -65,12 +65,12 @@ const getHostedZoneIdByName = async (domain: string) => {
   return null;
 };
 
-const checkAvailability = (): Promise<string> =>
+const checkAvailability = (DomainName: string): Promise<string> =>
   domains
-    .checkDomainAvailability({ DomainName: projectName })
+    .checkDomainAvailability({ DomainName })
     .promise()
     .then((r) =>
-      r.Availability === "PENDING" ? checkAvailability() : r.Availability
+      r.Availability === "PENDING" ? checkAvailability(DomainName) : r.Availability
     );
 
 const checkDomainStatus = (OperationId: string): Promise<void> =>
@@ -152,7 +152,7 @@ const tasks: {
             )
           );
         }
-        return checkAvailability().then((r) => {
+        return checkAvailability(DomainName).then((r) => {
           if (r !== "AVAILABLE") {
             return domains
               .getDomainSuggestions({
@@ -512,11 +512,11 @@ on:
       - ".github/workflows/main.yaml"
 
 env:
-  API_URL: https://api.${projectName}
+  API_URL: https://api.${rawName}
   AWS_ACCESS_KEY_ID: \${{ secrets.DEPLOY_AWS_ACCESS_KEY }}
   AWS_SECRET_ACCESS_KEY: \${{ secrets.DEPLOY_AWS_ACCESS_SECRET }}
   AWS_REGION: us-east-1
-  CLERK_FRONTEND_API: clerk.${projectName}
+  CLERK_FRONTEND_API: clerk.${rawName}
 
 jobs:
   deploy:
@@ -925,6 +925,10 @@ variable "clerk_api_key" {
     type = string
 }
 
+variable "mysql_password" {
+  type = string
+}
+
 provider "aws" {
   region = "us-east-1"
   access_key = var.aws_access_token
@@ -940,7 +944,7 @@ module "aws_static_site" {
   source  = "dvargas92495/static-site/aws"
   version = "3.1.3"
 
-  domain = "${projectName}"
+  domain = "${projectName.includes('.') ? projectName : rawName}"
   secret = var.secret
   tags = {
       Application = "${safeProjectName}"
@@ -955,7 +959,7 @@ module "aws-serverless-backend" {
     source  = "dvargas92495/serverless-backend/aws"
     version = "2.0.5"
 
-    api_name = "${safeProjectName}"
+    api_name = "${safeProjectName}"${safeProjectName.includes("-") ? "" : `\n    domain  = "${safeProjectName}.davidvargas.me"`}
 }
 
 module "aws_clerk" {
@@ -988,6 +992,12 @@ resource "github_actions_secret" "lambda_aws_access_secret" {
   repository       = "${projectName}"
   secret_name      = "LAMBDA_AWS_ACCESS_SECRET"
   plaintext_value  = module.aws-serverless-backend.secret_key
+}
+
+resource "github_actions_secret" "mysql_password" {
+  repository       = "${projectName}"
+  secret_name      = "MYSQL_PASSWORD"
+  plaintext_value  = var.mysql_password
 }
 
 resource "github_actions_secret" "clerk_api_key" {
@@ -1255,6 +1265,7 @@ resource "github_actions_secret" "clerk_api_key" {
               { key: "secret", value: randomstring.generate(32) },
               { key: "github_token", env: "GITHUB_TOKEN" },
               { key: "mysql_password", env: "MYSQL_PASSWORD" },
+              { key: "clerk_api_key", env: "CLERK_API_KEY" },
             ].map(({ key, env, value }) =>
               axios.post(
                 `https://app.terraform.io/api/v2/workspaces/${id}/vars`,
@@ -1429,5 +1440,5 @@ const run = async () => {
 
 run()
   .then(() => rl.close())
-  .then(() => console.log(chalk.greenBright(`${projectName} Ready!`)))
+  .then(() => console.log(chalk.greenBright(`${projectName} is Ready!`)))
   .catch((e) => console.error(chalk.redBright(e)));
