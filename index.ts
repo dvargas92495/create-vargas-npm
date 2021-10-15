@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import validateNpmName from "validate-npm-package-name";
 import chalk from "chalk";
-import fs, { stat } from "fs";
+import fs from "fs";
 import path from "path";
 import os from "os";
 import spawn, { sync } from "cross-spawn";
@@ -24,12 +24,14 @@ const rds = new AWS.RDS({ apiVersion: "2014-10-31" });
 const npmToken = process.env.NPM_TOKEN || "";
 const terraformOrganizationToken = process.env.TERRAFORM_ORGANIZATION_TOKEN;
 const rawName = process.argv[2] || "";
-const projectName = rawName.replace(/^@dvargas92495\//, '');
+const projectName = rawName
+  .replace(/^@dvargas92495\//, "")
+  .replace(/\.davidvargas\.me$/, "");
 const safeProjectName = projectName.replace(/\./g, "-");
 const mysqlName = safeProjectName.replace(/-/g, "_");
 const opts = process.argv.slice(3);
 const isReact = opts.includes("--react");
-const isApp = opts.includes("--app");
+const isApp = rawName.includes(".") || opts.includes("--app");
 const root = path.resolve(projectName);
 const githubOpts = {
   headers: {
@@ -139,7 +141,8 @@ const tasks: {
   {
     title: "Verify site ownership",
     task: () => {
-      return getHostedZoneIdByName(projectName).then((id) => {
+      const DomainName = rawName.split(".").slice(-2).join(".");
+      return getHostedZoneIdByName(DomainName).then((id) => {
         if (id) {
           return console.log(
             chalk.yellow(
@@ -153,20 +156,20 @@ const tasks: {
           if (r !== "AVAILABLE") {
             return domains
               .getDomainSuggestions({
-                DomainName: projectName,
+                DomainName,
                 OnlyAvailable: true,
                 SuggestionCount: 10,
               })
               .promise()
               .then((s) => {
                 throw new Error(
-                  `Domain ${projectName} is not available and not owned (${r}), try one of these:\n${s.SuggestionsList?.map(
+                  `Domain ${DomainName} is not available and not owned (${r}), try one of these:\n${s.SuggestionsList?.map(
                     (s) => `- ${s.DomainName}`
                   )}\naborting...`
                 );
               });
           }
-          console.log(chalk.blue("Buying domain", projectName));
+          console.log(chalk.blue("Buying domain", DomainName));
           const {
             AddressLine1 = "",
             AddressLine2 = "",
@@ -205,7 +208,7 @@ const tasks: {
               TechContact: Contact,
               RegistrantContact: Contact,
               AdminContact: Contact,
-              DomainName: projectName,
+              DomainName,
               DurationInYears: 1,
             })
             .promise()
@@ -213,7 +216,7 @@ const tasks: {
               console.log(
                 chalk.green(
                   "Successfully bought",
-                  projectName,
+                  DomainName,
                   "operation id:",
                   r.OperationId
                 )
@@ -442,6 +445,7 @@ Description for ${projectName}
           noImplicitAny: true,
           forceConsistentCasingInFileNames: true,
           allowSyntheticDefaultImports: true,
+          skipLibCheck: true,
         },
         include: ["src", ...(isApp ? ["pages", "functions", "db"] : [])],
         exclude: ["node_modules", "**/__tests__/*"],
@@ -561,7 +565,7 @@ env:
   TYPEORM_DATABASE: ${mysqlName}
   TYPEORM_PORT: 5432
   TYPEORM_SYNCHRONIZE: false
-  TYPEORM_LOGGING: true
+  TYPEORM_LOGGING: false
   TYPEORM_ENTITIES: db/*.ts
   TYPEORM_MIGRATIONS: db/migrations/*.ts
   TYPEORM_MIGRATIONS_DIR: db/migrations
@@ -607,7 +611,7 @@ env:
   TYPEORM_DATABASE: ${mysqlName}
   TYPEORM_PORT: 5432
   TYPEORM_SYNCHRONIZE: false
-  TYPEORM_LOGGING: true
+  TYPEORM_LOGGING: false
   TYPEORM_ENTITIES: db/*.ts
   TYPEORM_MIGRATIONS: db/migrations/*.ts
   TYPEORM_MIGRATIONS_DIR: db/migrations
@@ -719,8 +723,6 @@ SOFTWARE.
             : []),
           ...(isApp
             ? [
-                "@clerk/clerk-react",
-                "@clerk/clerk-sdk-node",
                 "@types/node",
                 "@types/aws-lambda",
                 "@types/react",
@@ -753,16 +755,9 @@ SOFTWARE.
     task: () => {
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
-        const dependencies = ["react", "react-dom"];
-        if (isApp)
-          dependencies.push(
-            "@clerk/clerk-react",
-            "@clerk/clerk-sdk-node",
-            "@dvargas92495/ui",
-            "aws-sdk",
-            "axios",
-            "typeorm"
-          );
+        const dependencies = isApp
+          ? ["@dvargas92495/api", "@dvargas92495/ui", "aws-sdk-plus", "axios"]
+          : ["react", "react-dom"];
         const child = spawn("npm", ["install"].concat(dependencies), {
           stdio: "inherit",
         });
@@ -958,16 +953,9 @@ module "aws_static_site" {
 
 module "aws-serverless-backend" {
     source  = "dvargas92495/serverless-backend/aws"
-    version = "1.5.14"
+    version = "2.0.1"
 
     api_name = "${safeProjectName}"
-    domain = "${projectName}"
-    paths = [
-    ]
-
-    tags = {
-        Application = "${safeProjectName}"
-    }
 }
 
 module "aws_clerk" {
@@ -1063,7 +1051,14 @@ resource "github_actions_secret" "clerk_api_key" {
           );
         })
         .catch((e) =>
-          console.log(chalk.red("Failed to add secret", e.response?.data))
+          console.log(
+            chalk.red(
+              "Failed to add secret",
+              typeof e.response?.data === "object"
+                ? JSON.stringify(e.response?.data)
+                : e.response?.data
+            )
+          )
         );
     },
     skip: () => isApp,
