@@ -953,7 +953,7 @@ module "aws_static_site" {
 
 module "aws-serverless-backend" {
     source  = "dvargas92495/serverless-backend/aws"
-    version = "2.0.1"
+    version = "2.0.5"
 
     api_name = "${safeProjectName}"
 }
