@@ -22,7 +22,6 @@ const domains = new AWS.Route53Domains({
 });
 const rds = new AWS.RDS({ apiVersion: "2014-10-31" });
 const npmToken = process.env.NPM_TOKEN || "";
-const terraformOrganizationToken = process.env.TERRAFORM_ORGANIZATION_TOKEN;
 const rawName = process.argv[2] || "";
 const projectName = rawName
   .replace(/^@dvargas92495\//, "")
@@ -70,7 +69,9 @@ const checkAvailability = (DomainName: string): Promise<string> =>
     .checkDomainAvailability({ DomainName })
     .promise()
     .then((r) =>
-      r.Availability === "PENDING" ? checkAvailability(DomainName) : r.Availability
+      r.Availability === "PENDING"
+        ? checkAvailability(DomainName)
+        : r.Availability
     );
 
 const checkDomainStatus = (OperationId: string): Promise<void> =>
@@ -79,7 +80,12 @@ const checkDomainStatus = (OperationId: string): Promise<void> =>
     .promise()
     .then((d) => {
       if (d.Status === "IN_PROGRESS" || d.Status === "SUBMITTED") {
-        console.log(chalk.yellow("Checking again at", new Date().toJSON()));
+        console.log(
+          chalk.yellow(
+            "Checking domain registration again at",
+            new Date().toJSON()
+          )
+        );
         return new Promise((resolve) =>
           setTimeout(() => resolve(checkDomainStatus(OperationId)), 30000)
         );
@@ -101,7 +107,9 @@ const checkGhStatus = (id: string): Promise<void> =>
     )
     .then((r) => {
       if (r.data.status === "queued" || r.data.status === "in_progress") {
-        console.log(chalk.yellow("Checking again at", new Date().toJSON()));
+        console.log(
+          chalk.yellow("Checking github action again at", new Date().toJSON())
+        );
         return new Promise((resolve) =>
           setTimeout(() => resolve(checkGhStatus(id)), 30000)
         );
@@ -342,7 +350,9 @@ const tasks: {
                 api: "fuego api",
                 build: "fuego build",
                 compile: "fuego compile",
-                deploy: "fuego deploy",
+                deploy: `fuego deploy${
+                  projectName.includes(".") ? "" : ` --domain ${rawName}`
+                }`,
                 fe: "fuego fe",
                 migrate: "npm run typeorm migration:run",
                 publish: "fuego publish",
@@ -376,12 +386,6 @@ const tasks: {
                 : {}),
             }),
       };
-      if (isApp) {
-        fs.writeFileSync(
-          path.join(root, "fuego.json"),
-          JSON.stringify({ renderBodyFirst: true }, null, 2) + os.EOL
-        );
-      }
 
       return fs.writeFileSync(
         path.join(root, "package.json"),
@@ -944,7 +948,7 @@ module "aws_static_site" {
   source  = "dvargas92495/static-site/aws"
   version = "3.1.3"
 
-  domain = "${projectName.includes('.') ? projectName : rawName}"
+  domain = "${projectName.includes(".") ? projectName : rawName}"
   secret = var.secret
   tags = {
       Application = "${safeProjectName}"
@@ -956,18 +960,26 @@ module "aws_static_site" {
 }
 
 module "aws-serverless-backend" {
-    source  = "dvargas92495/serverless-backend/aws"
-    version = "2.0.5"
+  source  = "dvargas92495/serverless-backend/aws"
+  version = "2.0.5"
 
-    api_name = "${safeProjectName}"${safeProjectName.includes("-") ? "" : `\n    domain  = "${safeProjectName}.davidvargas.me"`}
+  api_name = "${safeProjectName}"${
+            safeProjectName.includes("-")
+              ? ""
+              : `\n  domain  = "${safeProjectName}.davidvargas.me"`
+          }
 }
 
 module "aws_clerk" {
   source   = "dvargas92495/clerk/aws"
-  version  = "1.0.1"
+  version  = "1.0.2"
 
   zone_id  = module.aws_static_site.route53_zone_id
-  clerk_id = "${process.env.CLERK_DNS_ID}"
+  clerk_id = "${process.env.CLERK_DNS_ID}"${
+            safeProjectName.includes("-")
+              ? ""
+              : `\n  subdomain  = "${safeProjectName}"`
+          }
 }
 
 resource "github_actions_secret" "deploy_aws_access_key" {
@@ -1204,7 +1216,7 @@ resource "github_actions_secret" "clerk_api_key" {
     task: () => {
       const tfOpts = {
         headers: {
-          Authorization: `Bearer ${terraformOrganizationToken}`,
+          Authorization: `Bearer ${process.env.TERRAFORM_ORGANIZATION_TOKEN}`,
           "Content-Type": "application/vnd.api+json",
         },
       };
@@ -1323,7 +1335,10 @@ resource "github_actions_secret" "clerk_api_key" {
                       status === "applying"
                     ) {
                       console.log(
-                        chalk.yellow("Checking again at", new Date().toJSON())
+                        chalk.yellow(
+                          "Checking terraform run again at",
+                          new Date().toJSON()
+                        )
                       );
                       return new Promise((resolve) =>
                         setTimeout(() => resolve(checkTerraformStatus()), 30000)
@@ -1345,6 +1360,15 @@ resource "github_actions_secret" "clerk_api_key" {
                       );
                     }
                   });
+              return checkTerraformStatus();
+            })
+            .catch((e) => {
+              console.log(
+                chalk.yellow(
+                  `Failed to kick off the terraform run. Do so manually. Error:`
+                )
+              );
+              console.log(chalk.yellow(e));
             })
         );
     },
@@ -1439,6 +1463,6 @@ const run = async () => {
 };
 
 run()
-  .then(() => rl.close())
   .then(() => console.log(chalk.greenBright(`${projectName} is Ready!`)))
-  .catch((e) => console.error(chalk.redBright(e)));
+  .catch((e) => console.error(chalk.redBright(e)))
+  .finally(() => rl.close());
