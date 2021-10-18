@@ -808,14 +808,151 @@ export default run;
     title: "Write pages",
     task: () => {
       fs.mkdirSync(path.join(root, "pages"));
-      return fs.writeFileSync(
-        path.join(root, "pages", "index.tsx"),
-        `import React from "react";
+      fs.mkdirSync(path.join(root, "pages", "_common"));
+      const files = {
+        "index.tsx": `import React from "react";
 
 const Home: React.FunctionComponent = () => <div>Welcome!</div>;
 
 export default Home;
-`
+`,
+        "_common/Layout.tsx": `import React from "react";
+import DefaultLayout, {
+  LayoutHead as DefaultLayoutHead,
+} from "@dvargas92495/ui/dist/components/Layout";
+
+const Layout: React.FC = ({ children }) => {
+  return <DefaultLayout homeIcon={"Home"}>{children}</DefaultLayout>;
+};
+
+type HeadProps = Omit<Parameters<typeof DefaultLayoutHead>[0], "title">;
+
+export const LayoutHead = ({
+  title = "Welcome",
+  ...rest
+}: HeadProps & { title?: string }): React.ReactElement => {
+  return (
+    <DefaultLayoutHead title={\`\${title} | ${
+      safeProjectName.split("-")[0]
+    }\`} {...rest} />
+  );
+};
+
+export default Layout;`,
+        "login.tsx": `import React from "react";
+import { SignIn } from "@clerk/clerk-react";
+import Layout, { LayoutHead } from "./_common/Layout";
+
+const LoginPage: React.FC = () => (
+  <Layout>
+    <SignIn />
+  </Layout>
+);
+
+export const Head = (): React.ReactElement => <LayoutHead title={"Log In"} />;
+export default LoginPage;
+`,
+        "signup.tsx": `import React from "react";
+import Layout, { LayoutHead } from "./_common/Layout";
+import { SignUp } from "@clerk/clerk-react";
+
+const Signup: React.FunctionComponent = () => (
+  <Layout>
+    <SignUp />
+  </Layout>
+);
+
+export const Head = (): React.ReactElement => <LayoutHead title={"Sign up"} />;
+export default Signup;
+`,
+        "user.tsx": `import React from "react";
+import Layout, { LayoutHead } from "./_common/Layout";
+import RedirectToLogin from "@dvargas92495/ui/dist/components/RedirectToLogin";
+import clerkUserProfileCss from "@dvargas92495/ui/dist/clerkUserProfileCss";
+import { SignedIn, UserProfile } from "@clerk/clerk-react";
+
+const UserPage: React.FunctionComponent = () => (
+  <Layout>
+    <SignedIn>
+      <UserProfile />
+    </SignedIn>
+    <RedirectToLogin />
+  </Layout>
+);
+
+export const Head = (): React.ReactElement => (
+  <LayoutHead
+    title={"User"}
+    styles={clerkUserProfileCss}
+  />
+);
+export default UserPage;`,
+        "about.tsx": `import React from "react";
+import Layout, { LayoutHead } from "./_common/Layout";
+import About from "@dvargas92495/ui/dist/components/About";
+
+const AboutPage: React.FunctionComponent = () => (
+  <Layout>
+    <About
+      title={"About"}
+      subtitle={"Description"}
+      paragraphs={[]}
+    />
+  </Layout>
+);
+
+export const Head = (): React.ReactElement => <LayoutHead title={"About"} />;
+export default AboutPage;
+`,
+        "contact.tsx": `import React from "react";
+import Layout, { LayoutHead } from "./_common/Layout";
+import Contact from "@dvargas92495/ui/dist/components/Contact";
+
+const ContactPage: React.FunctionComponent = () => (
+  <Layout>
+    <Contact email={"${
+      safeProjectName.includes("-")
+        ? `support@${projectName}`
+        : "dvargas92495@gmail.com"
+    }"} />
+  </Layout>
+);
+
+export const Head = (): React.ReactElement => <LayoutHead title={"Contact Us"} />;
+export default ContactPage;
+`,
+        "privacy-policy.tsx": `import React from "react";
+import Layout, { LayoutHead } from "./_common/Layout";
+import PrivacyPolicy from "@dvargas92495/ui/dist/components/PrivacyPolicy";
+
+const PrivacyPolicyPage: React.FunctionComponent = () => (
+  <Layout>
+    <PrivacyPolicy name={"${safeProjectName}"} domain={"${rawName}"} />
+  </Layout>
+);
+
+export const Head = (): React.ReactElement => (
+  <LayoutHead title={"Privacy Policy"} />
+);
+export default PrivacyPolicyPage;`,
+        "terms-of-use.tsx": `import React from "react";
+import Layout, { LayoutHead } from "./_common/Layout";
+import TermsOfUse from "@dvargas92495/ui/dist/components/TermsOfUse";
+
+const TermsOfUsePage: React.FC = () => (
+  <Layout>
+    <TermsOfUse name={"${safeProjectName}"} domain={"${rawName}"} />
+  </Layout>
+);
+
+export const Head = (): React.ReactElement => (
+  <LayoutHead title={"Terms of Use"} />
+);
+export default TermsOfUsePage;
+`,
+      };
+      return Object.entries(files).forEach(([file, content]) =>
+        fs.writeFileSync(path.join(root, "pages", file), content)
       );
     },
     skip: () => !isApp,
@@ -972,7 +1109,7 @@ module "aws-serverless-backend" {
 
 module "aws_clerk" {
   source   = "dvargas92495/clerk/aws"
-  version  = "1.0.2"
+  version  = "1.0.3"
 
   zone_id  = module.aws_static_site.route53_zone_id
   clerk_id = "${process.env.CLERK_DNS_ID}"${
@@ -1431,6 +1568,7 @@ TYPEORM_MIGRATIONS_DIR=db/migrations
     title: "Manual Steps to run",
     task: () => {
       console.log(chalk.blue("Manual steps to run:"));
+      console.log(chalk.blue("- Remove Google SSO on production"));
       console.log(
         chalk.blue("- Click Deploy on the Clerk Production Instance")
       );
