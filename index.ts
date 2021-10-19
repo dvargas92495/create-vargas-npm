@@ -22,12 +22,15 @@ const domains = new AWS.Route53Domains({
 });
 const rds = new AWS.RDS({ apiVersion: "2014-10-31" });
 const npmToken = process.env.NPM_TOKEN || "";
+
 const rawName = process.argv[2] || "";
 const projectName = rawName
   .replace(/^@dvargas92495\//, "")
   .replace(/\.davidvargas\.me$/, "");
 const safeProjectName = projectName.replace(/\./g, "-");
 const mysqlName = safeProjectName.replace(/-/g, "_");
+const DomainName = rawName.split(".").slice(-2).join(".");
+
 const opts = process.argv.slice(3);
 const isReact = opts.includes("--react");
 const isApp = rawName.includes(".") || opts.includes("--app");
@@ -44,7 +47,7 @@ const rl = readline.createInterface({
 const rlp = (q: string) =>
   new Promise<string>((resolve) => rl.question(q, resolve));
 
-const getHostedZoneIdByName = async (domain: string) => {
+const getHostedZoneIdByName = async () => {
   let finished = false;
   let props: { Marker?: string } = {};
   while (!finished) {
@@ -53,7 +56,7 @@ const getHostedZoneIdByName = async (domain: string) => {
       IsTruncated,
       NextMarker,
     } = await route53.listHostedZones(props).promise();
-    const zone = HostedZones.find((i) => i.Name === `${domain}.`);
+    const zone = HostedZones.find((i) => i.Name === `${DomainName}.`);
     if (zone) {
       return zone.Id.replace(/\/hostedzone\//, "");
     }
@@ -64,13 +67,13 @@ const getHostedZoneIdByName = async (domain: string) => {
   return null;
 };
 
-const checkAvailability = (DomainName: string): Promise<string> =>
+const checkAvailability = (): Promise<string> =>
   domains
     .checkDomainAvailability({ DomainName })
     .promise()
     .then((r) =>
       r.Availability === "PENDING"
-        ? checkAvailability(DomainName)
+        ? checkAvailability()
         : r.Availability
     );
 
@@ -149,8 +152,7 @@ const tasks: {
   {
     title: "Verify site ownership",
     task: () => {
-      const DomainName = rawName.split(".").slice(-2).join(".");
-      return getHostedZoneIdByName(DomainName).then((id) => {
+      return getHostedZoneIdByName().then((id) => {
         if (id) {
           return console.log(
             chalk.yellow(
@@ -160,7 +162,7 @@ const tasks: {
             )
           );
         }
-        return checkAvailability(DomainName).then((r) => {
+        return checkAvailability().then((r) => {
           if (r !== "AVAILABLE") {
             return domains
               .getDomainSuggestions({
@@ -507,6 +509,7 @@ jobs:
         path.join(root, ".github", "workflows", "main.yaml"),
         `name: Publish site
 on:
+  workflow_dispatch:
   push:
     branches: main
     paths:
@@ -520,7 +523,7 @@ env:
   AWS_ACCESS_KEY_ID: \${{ secrets.DEPLOY_AWS_ACCESS_KEY }}
   AWS_SECRET_ACCESS_KEY: \${{ secrets.DEPLOY_AWS_ACCESS_SECRET }}
   AWS_REGION: us-east-1
-  CLERK_FRONTEND_API: clerk.${rawName}
+  CLERK_FRONTEND_API: clerk.${DomainName}
 
 jobs:
   deploy:
