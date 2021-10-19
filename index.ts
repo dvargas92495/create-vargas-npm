@@ -1172,7 +1172,10 @@ resource "github_actions_secret" "clerk_api_key" {
             ? axios
                 .post(
                   "https://api.github.com/user/repos",
-                  { name: projectName },
+                  {
+                    name: projectName,
+                    ...(isApp ? { homepage: rawName } : {}),
+                  },
                   githubOpts
                 )
                 .catch((err) =>
