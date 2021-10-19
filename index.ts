@@ -72,9 +72,7 @@ const checkAvailability = (): Promise<string> =>
     .checkDomainAvailability({ DomainName })
     .promise()
     .then((r) =>
-      r.Availability === "PENDING"
-        ? checkAvailability()
-        : r.Availability
+      r.Availability === "PENDING" ? checkAvailability() : r.Availability
     );
 
 const checkDomainStatus = (OperationId: string): Promise<void> =>
@@ -1086,7 +1084,7 @@ provider "github" {
 
 module "aws_static_site" {
   source  = "dvargas92495/static-site/aws"
-  version = "3.1.3"
+  version = "3.1.5"
 
   domain = "${projectName.includes(".") ? projectName : rawName}"
   secret = var.secret
@@ -1472,7 +1470,8 @@ resource "github_actions_secret" "clerk_api_key" {
                     if (
                       status === "pending" ||
                       status === "planning" ||
-                      status === "applying"
+                      status === "applying" ||
+                      status === "plan_queued"
                     ) {
                       console.log(
                         chalk.yellow(
