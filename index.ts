@@ -522,6 +522,7 @@ env:
   AWS_SECRET_ACCESS_KEY: \${{ secrets.DEPLOY_AWS_ACCESS_SECRET }}
   AWS_REGION: us-east-1
   CLERK_FRONTEND_API: clerk.${DomainName}
+  STRIPE_PUBLIC_KEY: \${{ secrets.STRIPE_PUBLIC_KEY }}
 
 jobs:
   deploy:
@@ -1559,6 +1560,7 @@ resource "github_actions_secret" "stripe_secret" {
 HOST=http://localhost:3000
 CLERK_API_KEY=${process.env.CLERK_DEV_API_KEY}
 CLERK_FRONTEND_API=${process.env.CLERK_DEV_FRONTEND_API}
+STRIPE_PUBLIC_KEY=${process.env.TEST_STRIPE_PUBLIC}
 STRIPE_SECRET_KEY=${process.env.TEST_STRIPE_SECRET}
 TYPEORM_CONNECTION=mysql
 TYPEORM_HOST=localhost
