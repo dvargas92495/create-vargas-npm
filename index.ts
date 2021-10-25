@@ -563,6 +563,8 @@ env:
   AWS_SECRET_ACCESS_KEY: \${{ secrets.LAMBDA_AWS_ACCESS_SECRET }}
   AWS_REGION: us-east-1
   CLERK_API_KEY: \${{ secrets.CLERK_API_KEY }}
+  HOST: https://${rawName}
+  STRIPE_SECRET_KEY: \${{ secrets.STRIPE_SECRET_KEY }}
   TYPEORM_CONNECTION: mysql
   TYPEORM_HOST: vargas-arts.c2sjnb5f4d57.us-east-1.rds.amazonaws.com
   TYPEORM_USERNAME: ${mysqlName}
@@ -761,7 +763,13 @@ SOFTWARE.
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
         const dependencies = isApp
-          ? ["@dvargas92495/api", "@dvargas92495/ui", "aws-sdk-plus", "axios"]
+          ? [
+              "@dvargas92495/api",
+              "@dvargas92495/ui",
+              "aws-sdk-plus",
+              "axios",
+              "stripe",
+            ]
           : ["react", "react-dom"];
         const child = spawn("npm", ["install"].concat(dependencies), {
           stdio: "inherit",
@@ -1074,6 +1082,14 @@ variable "mysql_password" {
   type = string
 }
 
+variable "stripe_public" {
+  type = string
+}
+
+variable "stripe_secret" {
+  type = string
+}
+
 provider "aws" {
   region = "us-east-1"
   access_key = var.aws_access_token
@@ -1157,6 +1173,18 @@ resource "github_actions_secret" "clerk_api_key" {
   repository       = "${projectName}"
   secret_name      = "CLERK_API_KEY"
   plaintext_value  = var.clerk_api_key
+}
+
+resource "github_actions_secret" "stripe_public" {
+  repository       = "${projectName}"
+  secret_name      = "STRIPE_PUBLIC_KEY"
+  plaintext_value  = var.stripe_public
+}
+
+resource "github_actions_secret" "stripe_secret" {
+  repository       = "${projectName}"
+  secret_name      = "STRIPE_SECRET_KEY"
+  plaintext_value  = var.stripe_secret
 }
 `
         )
@@ -1422,6 +1450,8 @@ resource "github_actions_secret" "clerk_api_key" {
               { key: "github_token", env: "GITHUB_TOKEN" },
               { key: "mysql_password", env: "MYSQL_PASSWORD" },
               { key: "clerk_api_key", env: "CLERK_API_KEY" },
+              { key: "stripe_public", env: "LIVE_STRIPE_PUBLIC" },
+              { key: "stripe_secret", env: "LIVE_STRIPE_SECRET" },
             ].map(({ key, env, value }) =>
               axios.post(
                 `https://app.terraform.io/api/v2/workspaces/${id}/vars`,
@@ -1526,8 +1556,10 @@ resource "github_actions_secret" "clerk_api_key" {
         fs.writeFileSync(
           path.join(root, ".env"),
           `API_URL=http://localhost:3003
+HOST=http://localhost:3000
 CLERK_API_KEY=${process.env.CLERK_DEV_API_KEY}
 CLERK_FRONTEND_API=${process.env.CLERK_DEV_FRONTEND_API}
+STRIPE_SECRET_KEY=${process.env.TEST_STRIPE_SECRET}
 TYPEORM_CONNECTION=mysql
 TYPEORM_HOST=localhost
 TYPEORM_USERNAME=${mysqlName}
