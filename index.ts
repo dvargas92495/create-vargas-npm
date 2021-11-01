@@ -560,10 +560,13 @@ on:
       - ".github/workflows/api.yaml"
 
 env:
+  API_URL: https://api.${rawName}
   AWS_ACCESS_KEY_ID: \${{ secrets.LAMBDA_AWS_ACCESS_KEY }}
   AWS_SECRET_ACCESS_KEY: \${{ secrets.LAMBDA_AWS_ACCESS_SECRET }}
   AWS_REGION: us-east-1
   CLERK_API_KEY: \${{ secrets.CLERK_API_KEY }}
+  CLERK_FRONTEND_API: clerk.${DomainName}
+  FE_DIR_PREFIX: /tmp
   HOST: https://${rawName}
   STRIPE_SECRET_KEY: \${{ secrets.STRIPE_SECRET_KEY }}
   TYPEORM_CONNECTION: mysql
@@ -1119,7 +1122,7 @@ module "aws_static_site" {
 
 module "aws-serverless-backend" {
   source  = "dvargas92495/serverless-backend/aws"
-  version = "2.0.5"
+  version = "2.2.0"
 
   api_name = "${safeProjectName}"${
             safeProjectName.includes("-")
