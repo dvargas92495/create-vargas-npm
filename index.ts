@@ -358,6 +358,7 @@ const tasks: {
                 publish: "fuego publish",
                 typeorm:
                   "ts-node --transpile-only ./node_modules/typeorm/cli.js",
+                start: 'concurrently "npm:api" "npm:fe"',
               },
             }
           : {
@@ -568,6 +569,7 @@ env:
   CLERK_FRONTEND_API: clerk.${DomainName}
   FE_DIR_PREFIX: /tmp
   HOST: https://${rawName}
+  STRIPE_PUBLIC_KEY: \${{ secrets.STRIPE_PUBLIC_KEY }}
   STRIPE_SECRET_KEY: \${{ secrets.STRIPE_SECRET_KEY }}
   TYPEORM_CONNECTION: mysql
   TYPEORM_HOST: vargas-arts.c2sjnb5f4d57.us-east-1.rds.amazonaws.com
@@ -738,6 +740,7 @@ SOFTWARE.
                 "@types/aws-lambda",
                 "@types/react",
                 "@types/react-dom",
+                "concurrently",
                 "fuegojs",
                 "ts-node",
                 "tslint-react-hooks",
@@ -770,8 +773,7 @@ SOFTWARE.
           ? [
               "@dvargas92495/api",
               "@dvargas92495/ui",
-              "aws-sdk-plus",
-              "axios",
+              "@stripe/stripe-js",
               "stripe",
             ]
           : ["react", "react-dom"];
@@ -833,9 +835,8 @@ export const Head = () => <LayoutHead title={"Home"} />;
 export default Home;
 `,
         "_common/Layout.tsx": `import React from "react";
-import DefaultLayout, {
-  LayoutHead as DefaultLayoutHead,
-} from "@dvargas92495/ui/dist/components/Layout";
+import DefaultLayout from "@dvargas92495/ui/dist/components/Layout";
+import { Head as DefaultHead } from "@dvargas92495/ui/dist/components/Document";
 
 const Layout: React.FC = ({ children }) => {
   return <DefaultLayout homeIcon={"Home"}>{children}</DefaultLayout>;
@@ -848,7 +849,7 @@ export const LayoutHead = ({
   ...rest
 }: HeadProps & { title?: string }): React.ReactElement => {
   return (
-    <DefaultLayoutHead title={\`\${title} | ${
+    <DefaultHead title={\`\${title} | ${
       safeProjectName.split("-")[0]
     }\`} {...rest} />
   );
@@ -1107,7 +1108,7 @@ provider "github" {
 
 module "aws_static_site" {
   source  = "dvargas92495/static-site/aws"
-  version = "3.1.5"
+  version = "3.2.0"
 
   domain = "${projectName.includes(".") ? projectName : rawName}"
   secret = var.secret
@@ -1122,7 +1123,7 @@ module "aws_static_site" {
 
 module "aws-serverless-backend" {
   source  = "dvargas92495/serverless-backend/aws"
-  version = "2.2.0"
+  version = "2.2.1"
 
   api_name = "${safeProjectName}"${
             safeProjectName.includes("-")
