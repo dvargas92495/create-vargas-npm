@@ -11,6 +11,22 @@ import randomstring from "randomstring";
 import AWS from "aws-sdk";
 import mysql from "mysql";
 import readline from "readline";
+import createRemixStack from "./tasks/createRemixStack";
+import meow from "meow";
+
+const helpText = `
+${chalk.red("F")} ${chalk.redBright("U")} ${chalk.yellow(
+  "E"
+)} ${chalk.redBright("G")} ${chalk.red("O")}
+${chalk.blue("Usage")}:
+  $ npx fuego init <${chalk.green("projectName")}>
+${chalk.blue("Options")}:
+  --help, -h          Print this help message and exit
+  --version, -v       Print the CLI version and exit
+  --task              Run just the input task. Runs all when omitted
+  --react             Project created will use React and JSX
+  --app               Project created will be a full stack application
+`;
 
 AWS.config.credentials = new AWS.SharedIniFileCredentials({
   profile: "davidvargas",
@@ -31,9 +47,24 @@ const safeProjectName = projectName.replace(/\./g, "-");
 const mysqlName = safeProjectName.replace(/-/g, "_");
 const DomainName = rawName.split(".").slice(-2).join(".");
 
-const opts = process.argv.slice(3);
-const isReact = opts.includes("--react");
-const isApp = rawName.includes(".") || opts.includes("--app");
+const argv = process.argv.slice(3);
+const { flags, showHelp, showVersion } = meow(helpText, {
+  argv,
+  booleanDefault: undefined,
+  description: false,
+  flags: {
+    app: { type: "boolean" },
+    help: { type: "string", alias: "h" },
+    react: { type: "boolean" },
+    task: { type: "string" },
+    version: { type: "boolean", alias: "v" },
+  },
+});
+if (flags.help) showHelp();
+if (flags.version) showVersion();
+
+const isReact = flags.react;
+const isApp = rawName.includes(".") || flags.app || false;
 const root = path.resolve(projectName);
 const githubOpts = {
   headers: {
@@ -123,11 +154,12 @@ const checkGhStatus = (id: string): Promise<void> =>
       }
     });
 
-const tasks: {
+type Task = {
   title: string;
   task: () => void | Promise<void>;
   skip?: () => boolean;
-}[] = [
+};
+const tasks: Task[] = [
   {
     title: "Validate Package Name",
     task: () => {
@@ -334,6 +366,11 @@ const tasks: {
     skip: () => fs.existsSync(projectName),
   },
   {
+    title: "Create Remix Stack",
+    task: () => createRemixStack({ projectDir: projectName }),
+    skip: () => !isApp,
+  },
+  {
     title: "Write Package JSON",
     task: () => {
       const packageJson: any = {
@@ -342,22 +379,12 @@ const tasks: {
         version: "0.0.0",
         license: "MIT",
         repository: `dvargas92495/${projectName}`,
+        sideEffects: false,
         ...(isApp
           ? {
               scripts: {
                 format: `prettier --write "**/*.tsx"`,
                 lint: `eslint . --ext .ts,.tsx`,
-                api: "fuego api",
-                build: "fuego build",
-                compile: "fuego compile",
-                deploy: `fuego deploy${
-                  projectName.includes(".") ? "" : ` --domain ${rawName}`
-                }`,
-                fe: "fuego fe",
-                migrate: "npm run typeorm migration:run",
-                publish: "fuego publish",
-                typeorm:
-                  "ts-node --transpile-only ./node_modules/typeorm/cli.js",
                 start: 'concurrently "npm:api" "npm:fe"',
               },
             }
@@ -376,7 +403,7 @@ const tasks: {
                 pretest: "npm run lint",
                 test: "jest --config jestconfig.json",
               },
-              files: ["/dist"],
+              files: [""],
               ...(isReact
                 ? {
                     peerDependencies: {
@@ -440,7 +467,7 @@ Description for ${projectName}
           module: "commonjs",
           moduleResolution: "node",
           declaration: true,
-          outDir: "./dist",
+          outDir: ".",
           strict: true,
           esModuleInterop: true,
           noUnusedLocals: true,
@@ -513,8 +540,7 @@ on:
     branches: main
     paths:
       - "package.json"
-      - "src/**"
-      - "pages/**"
+      - "app/**"
       - ".github/workflows/main.yaml"
 
 env:
@@ -534,12 +560,16 @@ jobs:
         uses: actions/setup-node@v1
         with:
           node-version: 14.17.6
+      - name: Install NPM 8
+        run: npm install -g npm@latest
       - name: install
         run: npm install
       - name: build
-        run: npm run build
+        run: npx fuego build
       - name: deploy
-        run: npm run deploy
+        run: npx fuego deploy${
+          projectName.includes(".") ? "" : ` --domain ${rawName}`
+        }
 `
       );
     },
@@ -555,8 +585,7 @@ on:
   push:
     branches: main
     paths:
-      - "functions/**"
-      - "src/**"
+      - "api/**"
       - "package.json"
       - ".github/workflows/api.yaml"
 
@@ -567,21 +596,11 @@ env:
   AWS_REGION: us-east-1
   CLERK_API_KEY: \${{ secrets.CLERK_API_KEY }}
   CLERK_FRONTEND_API: clerk.${DomainName}
+  DATABASE_URL=mysql://${mysqlName}:\${{ secrets.MYSQL_PASSWORD }}@vargas-arts.c2sjnb5f4d57.us-east-1.rds.amazonaws.com:5432/${mysqlName}
   FE_DIR_PREFIX: /tmp
   HOST: https://${rawName}
   STRIPE_PUBLIC_KEY: \${{ secrets.STRIPE_PUBLIC_KEY }}
   STRIPE_SECRET_KEY: \${{ secrets.STRIPE_SECRET_KEY }}
-  TYPEORM_CONNECTION: mysql
-  TYPEORM_HOST: vargas-arts.c2sjnb5f4d57.us-east-1.rds.amazonaws.com
-  TYPEORM_USERNAME: ${mysqlName}
-  TYPEORM_PASSWORD: \${{ secrets.MYSQL_PASSWORD }}
-  TYPEORM_DATABASE: ${mysqlName}
-  TYPEORM_PORT: 5432
-  TYPEORM_SYNCHRONIZE: false
-  TYPEORM_LOGGING: false
-  TYPEORM_ENTITIES: db/*.ts
-  TYPEORM_MIGRATIONS: db/migrations/*.ts
-  TYPEORM_MIGRATIONS_DIR: db/migrations
 
 jobs:
   deploy:
@@ -592,12 +611,14 @@ jobs:
         uses: actions/setup-node@v1
         with:
           node-version: 14.17.6
+      - name: Install NPM 8
+        run: npm install -g npm@latest
       - name: install
         run: npm install
       - name: build
-        run: npm run compile
+        run: npx fuego compile
       - name: deploy
-        run: npm run publish
+        run: npx fuego publish
 `
       );
     },
@@ -613,21 +634,11 @@ on:
   push:
     branches: main
     paths:
-      - "db/**"
+      - "migrations/**"
       - ".github/workflows/db.yaml"
 
 env:
-  TYPEORM_CONNECTION: mysql
-  TYPEORM_HOST: vargas-arts.c2sjnb5f4d57.us-east-1.rds.amazonaws.com
-  TYPEORM_USERNAME: ${mysqlName}
-  TYPEORM_PASSWORD: \${{ secrets.MYSQL_PASSWORD }}
-  TYPEORM_DATABASE: ${mysqlName}
-  TYPEORM_PORT: 5432
-  TYPEORM_SYNCHRONIZE: false
-  TYPEORM_LOGGING: false
-  TYPEORM_ENTITIES: db/*.ts
-  TYPEORM_MIGRATIONS: db/migrations/*.ts
-  TYPEORM_MIGRATIONS_DIR: db/migrations
+  DATABASE_URL=mysql://${mysqlName}:\${{ secrets.MYSQL_PASSWORD }}@vargas-arts.c2sjnb5f4d57.us-east-1.rds.amazonaws.com:5432/${mysqlName}
 
 jobs:
   deploy:
@@ -638,10 +649,12 @@ jobs:
         uses: actions/setup-node@v1
         with:
           node-version: 14.17.6
+      - name: Install NPM 8
+        run: npm install -g npm@latest
       - name: install
         run: npm install
       - name: migrate
-        run: npm run migrate
+        run: npx fuego migrate
 `
       );
     },
@@ -674,7 +687,7 @@ _fuego
           "plugin:@typescript-eslint/eslint-recommended",
           "plugin:@typescript-eslint/recommended",
         ],
-        ignorePatterns: ["**/dist/*", "scripts/"],
+        ignorePatterns: ["**/*", "scripts/"],
       };
       return fs.writeFileSync(
         path.join(root, ".eslintrc.json"),
@@ -770,12 +783,7 @@ SOFTWARE.
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
         const dependencies = isApp
-          ? [
-              "@dvargas92495/api",
-              "@dvargas92495/ui",
-              "@stripe/stripe-js",
-              "stripe",
-            ]
+          ? ["@dvargas92495/api", "@dvargas92495/ui"]
           : ["react", "react-dom"];
         const child = spawn("npm", ["install"].concat(dependencies), {
           stdio: "inherit",
@@ -835,14 +843,14 @@ export const Head = () => <LayoutHead title={"Home"} />;
 export default Home;
 `,
         "_common/Layout.tsx": `import React from "react";
-import DefaultLayout from "@dvargas92495/ui/dist/components/Layout";
-import { Head as DefaultHead } from "@dvargas92495/ui/dist/components/Document";
+import DefaultLayout from "@dvargas92495/ui/components/Layout";
+import { Head as DefaultHead } from "@dvargas92495/ui/components/Document";
 
 const Layout: React.FC = ({ children }) => {
   return <DefaultLayout homeIcon={"Home"}>{children}</DefaultLayout>;
 };
 
-type HeadProps = Omit<Parameters<typeof DefaultLayoutHead>[0], "title">;
+type HeadProps = Omit<Parameters<typeof DefaultHead>[0], "title">;
 
 export const LayoutHead = ({
   title = "Welcome",
@@ -884,8 +892,8 @@ export default Signup;
 `,
         "user.tsx": `import React from "react";
 import Layout, { LayoutHead } from "./_common/Layout";
-import RedirectToLogin from "@dvargas92495/ui/dist/components/RedirectToLogin";
-import clerkUserProfileCss from "@dvargas92495/ui/dist/clerkUserProfileCss";
+import RedirectToLogin from "@dvargas92495/ui/components/RedirectToLogin";
+import clerkUserProfileCss from "@dvargas92495/ui/clerkUserProfileCss";
 import { SignedIn, UserProfile } from "@clerk/clerk-react";
 
 const UserPage: React.FunctionComponent = () => (
@@ -906,7 +914,7 @@ export const Head = (): React.ReactElement => (
 export default UserPage;`,
         "about.tsx": `import React from "react";
 import Layout, { LayoutHead } from "./_common/Layout";
-import About from "@dvargas92495/ui/dist/components/About";
+import About from "@dvargas92495/ui/components/About";
 
 const AboutPage: React.FunctionComponent = () => (
   <Layout>
@@ -923,7 +931,7 @@ export default AboutPage;
 `,
         "contact.tsx": `import React from "react";
 import Layout, { LayoutHead } from "./_common/Layout";
-import Contact from "@dvargas92495/ui/dist/components/Contact";
+import Contact from "@dvargas92495/ui/components/Contact";
 
 const ContactPage: React.FunctionComponent = () => (
   <Layout>
@@ -940,7 +948,7 @@ export default ContactPage;
 `,
         "privacy-policy.tsx": `import React from "react";
 import Layout, { LayoutHead } from "./_common/Layout";
-import PrivacyPolicy from "@dvargas92495/ui/dist/components/PrivacyPolicy";
+import PrivacyPolicy from "@dvargas92495/ui/components/PrivacyPolicy";
 
 const PrivacyPolicyPage: React.FunctionComponent = () => (
   <Layout>
@@ -954,7 +962,7 @@ export const Head = (): React.ReactElement => (
 export default PrivacyPolicyPage;`,
         "terms-of-use.tsx": `import React from "react";
 import Layout, { LayoutHead } from "./_common/Layout";
-import TermsOfUse from "@dvargas92495/ui/dist/components/TermsOfUse";
+import TermsOfUse from "@dvargas92495/ui/components/TermsOfUse";
 
 const TermsOfUsePage: React.FC = () => (
   <Layout>
@@ -965,8 +973,9 @@ const TermsOfUsePage: React.FC = () => (
 export const Head = (): React.ReactElement => (
   <LayoutHead title={"Terms of Use"} />
 );
-export default TermsOfUsePage;
-`,
+export default TermsOfUsePage;`,
+        "_html.tsx": `export * from "@dvargas92495/ui/components/FuegoRoot";
+export { default as default } from "@dvargas92495/ui/components/FuegoRoot";`,
       };
       return Object.entries(files).forEach(([file, content]) =>
         fs.writeFileSync(path.join(root, "pages", file), content)
@@ -1134,7 +1143,7 @@ module "aws-serverless-backend" {
 
 module "aws_clerk" {
   source   = "dvargas92495/clerk/aws"
-  version  = "1.0.3"
+  version  = "1.0.4"
 
   zone_id  = module.aws_static_site.route53_zone_id
   clerk_id = "${process.env.CLERK_DNS_ID}"${
@@ -1566,17 +1575,7 @@ CLERK_API_KEY=${process.env.CLERK_DEV_API_KEY}
 CLERK_FRONTEND_API=${process.env.CLERK_DEV_FRONTEND_API}
 STRIPE_PUBLIC_KEY=${process.env.TEST_STRIPE_PUBLIC}
 STRIPE_SECRET_KEY=${process.env.TEST_STRIPE_SECRET}
-TYPEORM_CONNECTION=mysql
-TYPEORM_HOST=localhost
-TYPEORM_USERNAME=${mysqlName}
-TYPEORM_PASSWORD=${mysqlName}
-TYPEORM_DATABASE=${mysqlName}
-TYPEORM_PORT=5432
-TYPEORM_SYNCHRONIZE=false
-TYPEORM_LOGGING=true
-TYPEORM_ENTITIES=db/*.ts
-TYPEORM_MIGRATIONS=db/migrations/*.ts
-TYPEORM_MIGRATIONS_DIR=db/migrations
+DATABASE_URL=mysql://${mysqlName}:${mysqlName}@localhost:5432/${mysqlName}
 `
         )
       );
@@ -1614,39 +1613,77 @@ TYPEORM_MIGRATIONS_DIR=db/migrations
     title: "Manual Steps to run",
     task: () => {
       console.log(chalk.blue("Manual steps to run:"));
-      console.log(chalk.blue("- Remove Google SSO on production"));
+      console.log(
+        chalk.blue(
+          "- Setup Google Project on https://console.cloud.google.com/projectselector2/home/dashboard?organizationId=0"
+        )
+      );
+      console.log(
+        chalk.blue(
+          `- Create OauthClient id on https://console.cloud.google.com/apis/credentials?project=${safeProjectName}`
+        )
+      );
       console.log(
         chalk.blue("- Click Deploy on the Clerk Production Instance")
       );
+      console.log(chalk.blue("- Copy "));
     },
     skip: () => !isApp,
   },
 ];
 
+const runTask = (
+  task: Task
+): Promise<{ success: boolean; message?: string }> => {
+  console.log(chalk.blue("Running", task.title, "..."));
+  if (task.skip?.()) {
+    console.log(chalk.blueBright("Skipped", task.title));
+    return Promise.resolve({ success: true });
+  }
+  return Promise.resolve(task.task)
+    .then((t) => t())
+    .then(() => {
+      console.log(chalk.greenBright("Successfully Ran", task.title));
+      return { success: true as const };
+    })
+    .catch((e) => {
+      console.log(chalk.redBright("Failed to run", task.title));
+      return { success: false as const, message: e.message };
+    });
+};
+
 const run = async () => {
   for (const task of tasks) {
-    console.log(chalk.blue("Running", task.title, "..."));
-    if (task.skip?.()) {
-      console.log(chalk.blueBright("Skipped", task.title));
-      continue;
-    }
-    const result = await Promise.resolve(task.task)
-      .then((t) => t())
-      .then(() => {
-        console.log(chalk.greenBright("Successfully Ran", task.title));
-        return { success: true as const };
-      })
-      .catch((e) => {
-        console.log(chalk.redBright("Failed to run", task.title));
-        return { success: false as const, message: e.message };
-      });
+    const result = await runTask(task);
     if (!result.success) {
+      const rest = tasks.slice(tasks.indexOf(task) + 1);
+      rest.forEach((r) =>
+        console.log(
+          chalk.grey(
+            "Skipped task",
+            r.title,
+            "due to failure from previous task"
+          )
+        )
+      );
       return Promise.reject(result.message);
     }
   }
 };
 
-run()
-  .then(() => console.log(chalk.greenBright(`${projectName} is Ready!`)))
-  .catch((e) => console.error(chalk.redBright(e)))
-  .finally(() => rl.close());
+if (flags.task) {
+  const task = tasks.find((t) => t.title === flags.task);
+  if (task)
+    runTask(task).then((s) =>
+      s.success
+        ? console.log(chalk.green("Done!"))
+        : console.error(chalk.redBright(s.message))
+    );
+  else
+    console.error(chalk.redBright(`Failed to find task of name ${flags.task}`));
+} else {
+  run()
+    .then(() => console.log(chalk.greenBright(`${projectName} is Ready!`)))
+    .catch((e) => console.error(chalk.redBright(e)))
+    .finally(() => rl.close());
+}
