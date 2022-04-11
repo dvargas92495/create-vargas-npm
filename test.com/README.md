@@ -1,3 +1,0 @@
-# {{projectName}}
-    
-Description for {{projectName}}

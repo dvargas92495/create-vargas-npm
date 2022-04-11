@@ -363,7 +363,7 @@ const tasks: Task[] = [
   {
     title: "Make Project Directory",
     task: () => fs.mkdirSync(projectName),
-    skip: () => fs.existsSync(projectName),
+    skip: () => isApp || fs.existsSync(projectName),
   },
   {
     title: "Create Remix Stack",
@@ -372,6 +372,7 @@ const tasks: Task[] = [
   },
   {
     title: "Write Package JSON",
+    skip: () => isApp,
     task: () => {
       const packageJson: any = {
         name: rawName,
@@ -380,39 +381,29 @@ const tasks: Task[] = [
         license: "MIT",
         repository: `dvargas92495/${projectName}`,
         sideEffects: false,
-        ...(isApp
+        main: "dist/index.js",
+        types: "dist/index.d.ts",
+        scripts: {
+          prebuild: "cross-env NODE_ENV=test npm t",
+          build: "tsc",
+          format: `prettier --write "src/**/*.ts${isReact ? "x" : ""}"`,
+          lint: `eslint . --ext .ts${isReact ? ",.tsx" : ""}`,
+          prepublishOnly: "npm run build",
+          preversion: "npm run lint",
+          version: "npm run format && git add -A src",
+          postversion: "git push origin main && git push --tags",
+          pretest: "npm run lint",
+          test: "jest --config jestconfig.json",
+        },
+        files: [""],
+        ...(isReact
           ? {
-              scripts: {
-                format: `prettier --write "**/*.tsx"`,
-                lint: `eslint . --ext .ts,.tsx`,
-                start: 'concurrently "npm:api" "npm:fe"',
+              peerDependencies: {
+                react: "^16.8.0 || ^17",
+                "react-dom": "^16.8.0 || ^17",
               },
             }
-          : {
-              main: "dist/index.js",
-              types: "dist/index.d.ts",
-              scripts: {
-                prebuild: "cross-env NODE_ENV=test npm t",
-                build: "tsc",
-                format: `prettier --write "src/**/*.ts${isReact ? "x" : ""}"`,
-                lint: `eslint . --ext .ts${isReact ? ",.tsx" : ""}`,
-                prepublishOnly: "npm run build",
-                preversion: "npm run lint",
-                version: "npm run format && git add -A src",
-                postversion: "git push origin main && git push --tags",
-                pretest: "npm run lint",
-                test: "jest --config jestconfig.json",
-              },
-              files: [""],
-              ...(isReact
-                ? {
-                    peerDependencies: {
-                      react: "^16.8.0 || ^17",
-                      "react-dom": "^16.8.0 || ^17",
-                    },
-                  }
-                : {}),
-            }),
+          : {}),
       };
 
       return fs.writeFileSync(
@@ -420,17 +411,6 @@ const tasks: Task[] = [
         JSON.stringify(packageJson, null, 2) + os.EOL
       );
     },
-  },
-  {
-    title: "Write README.md",
-    task: () =>
-      fs.writeFileSync(
-        path.join(root, "README.md"),
-        `# ${projectName}
-    
-Description for ${projectName}
-    `
-      ),
   },
   {
     title: "Write Jest Config",
@@ -727,14 +707,19 @@ SOFTWARE.
   },
   {
     title: "Install Dev Packages",
+    skip: () => isApp,
     task: () => {
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
         const dependencies = [
+          "@types/jest",
           "@typescript-eslint/parser",
           "@typescript-eslint/eslint-plugin",
+          "cross-env",
           "eslint",
+          "jest",
           "prettier",
+          "ts-jest",
           "tslint-config-prettier",
           "typescript",
           ...(isReact
@@ -747,18 +732,6 @@ SOFTWARE.
                 "tslint-react-hooks",
               ]
             : []),
-          ...(isApp
-            ? [
-                "@types/node",
-                "@types/aws-lambda",
-                "@types/react",
-                "@types/react-dom",
-                "concurrently",
-                "fuegojs",
-                "ts-node",
-                "tslint-react-hooks",
-              ]
-            : ["@types/jest", "cross-env", "jest", "ts-jest"]),
         ];
         const child = spawn(
           "npm",
@@ -779,12 +752,11 @@ SOFTWARE.
   },
   {
     title: "Install Packages",
+    skip: () => isApp || !isReact,
     task: () => {
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
-        const dependencies = isApp
-          ? ["@dvargas92495/api", "@dvargas92495/ui"]
-          : ["react", "react-dom"];
+        const dependencies = ["react", "react-dom"];
         const child = spawn("npm", ["install"].concat(dependencies), {
           stdio: "inherit",
         });
@@ -797,7 +769,6 @@ SOFTWARE.
         });
       });
     },
-    skip: () => !isReact && !isApp,
   },
   {
     title: "Write src",
