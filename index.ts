@@ -10,7 +10,6 @@ import axios from "axios";
 import randomstring from "randomstring";
 import AWS from "aws-sdk";
 import mysql from "mysql";
-import readline from "readline";
 import createRemixStack from "./tasks/createRemixStack";
 import meow from "meow";
 
@@ -31,7 +30,6 @@ ${chalk.blue("Options")}:
 AWS.config.credentials = new AWS.SharedIniFileCredentials({
   profile: "davidvargas",
 });
-const iam = new AWS.IAM({ apiVersion: "2010-05-08" });
 const route53 = new AWS.Route53({ apiVersion: "2013-04-01" });
 const domains = new AWS.Route53Domains({
   apiVersion: "2014-05-15",
@@ -71,12 +69,6 @@ const githubOpts = {
     Authorization: `token ${process.env.GITHUB_TOKEN}`,
   },
 };
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
-const rlp = (q: string) =>
-  new Promise<string>((resolve) => rl.question(q, resolve));
 
 const getHostedZoneIdByName = async () => {
   let finished = false;
@@ -129,28 +121,6 @@ const checkDomainStatus = (OperationId: string): Promise<void> =>
       } else {
         console.log(chalk.red(JSON.stringify(d)));
         throw new Error("Failed to register domain. aborting...");
-      }
-    });
-
-const checkGhStatus = (id: string): Promise<void> =>
-  axios
-    .get(
-      `https://api.github.com/repos/dvargas92495/${projectName}/actions/runs/${id}`
-    )
-    .then((r) => {
-      if (r.data.status === "queued" || r.data.status === "in_progress") {
-        console.log(
-          chalk.yellow("Checking github action again at", new Date().toJSON())
-        );
-        return new Promise((resolve) =>
-          setTimeout(() => resolve(checkGhStatus(id)), 30000)
-        );
-      } else if (r.data.status === "completed") {
-        console.log(chalk.green("Site deployed at", new Date().toJSON()));
-        return;
-      } else {
-        console.log(chalk.red(r.data.status));
-        throw new Error("Failed to deploy site. aborting...");
       }
     });
 
@@ -437,6 +407,7 @@ const tasks: Task[] = [
   },
   {
     title: "Write tsconfig.json",
+    skip: () => isApp,
     task: () => {
       const tsconfig = {
         compilerOptions: {
@@ -506,141 +477,6 @@ jobs:
     skip: () => isApp,
   },
   {
-    title: "Write App main.yaml",
-    task: () => {
-      fs.mkdirSync(path.join(root, ".github", "workflows"), {
-        recursive: true,
-      });
-      return fs.writeFileSync(
-        path.join(root, ".github", "workflows", "main.yaml"),
-        `name: Publish site
-on:
-  workflow_dispatch:
-  push:
-    branches: main
-    paths:
-      - "package.json"
-      - "app/**"
-      - ".github/workflows/main.yaml"
-
-env:
-  API_URL: https://api.${rawName}
-  AWS_ACCESS_KEY_ID: \${{ secrets.DEPLOY_AWS_ACCESS_KEY }}
-  AWS_SECRET_ACCESS_KEY: \${{ secrets.DEPLOY_AWS_ACCESS_SECRET }}
-  AWS_REGION: us-east-1
-  CLERK_FRONTEND_API: clerk.${DomainName}
-  STRIPE_PUBLIC_KEY: \${{ secrets.STRIPE_PUBLIC_KEY }}
-
-jobs:
-  deploy:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v2
-      - name: Use Node.js 14.17.6
-        uses: actions/setup-node@v1
-        with:
-          node-version: 14.17.6
-      - name: Install NPM 8
-        run: npm install -g npm@latest
-      - name: install
-        run: npm install
-      - name: build
-        run: npx fuego build
-      - name: deploy
-        run: npx fuego deploy${
-          projectName.includes(".") ? "" : ` --domain ${rawName}`
-        }
-`
-      );
-    },
-    skip: () => !isApp,
-  },
-  {
-    title: "Write api.yaml",
-    task: () => {
-      return fs.writeFileSync(
-        path.join(root, ".github", "workflows", "api.yaml"),
-        `name: Publish API
-on:
-  push:
-    branches: main
-    paths:
-      - "api/**"
-      - "package.json"
-      - ".github/workflows/api.yaml"
-
-env:
-  API_URL: https://api.${rawName}
-  AWS_ACCESS_KEY_ID: \${{ secrets.LAMBDA_AWS_ACCESS_KEY }}
-  AWS_SECRET_ACCESS_KEY: \${{ secrets.LAMBDA_AWS_ACCESS_SECRET }}
-  AWS_REGION: us-east-1
-  CLERK_API_KEY: \${{ secrets.CLERK_API_KEY }}
-  CLERK_FRONTEND_API: clerk.${DomainName}
-  DATABASE_URL=mysql://${mysqlName}:\${{ secrets.MYSQL_PASSWORD }}@vargas-arts.c2sjnb5f4d57.us-east-1.rds.amazonaws.com:5432/${mysqlName}
-  FE_DIR_PREFIX: /tmp
-  HOST: https://${rawName}
-  STRIPE_PUBLIC_KEY: \${{ secrets.STRIPE_PUBLIC_KEY }}
-  STRIPE_SECRET_KEY: \${{ secrets.STRIPE_SECRET_KEY }}
-
-jobs:
-  deploy:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v2
-      - name: Use Node.js 14.17.6
-        uses: actions/setup-node@v1
-        with:
-          node-version: 14.17.6
-      - name: Install NPM 8
-        run: npm install -g npm@latest
-      - name: install
-        run: npm install
-      - name: build
-        run: npx fuego compile
-      - name: deploy
-        run: npx fuego publish
-`
-      );
-    },
-    skip: () => !isApp,
-  },
-  {
-    title: "Write db.yaml",
-    task: () => {
-      return fs.writeFileSync(
-        path.join(root, ".github", "workflows", "db.yaml"),
-        `name: Migrate DB
-on:
-  push:
-    branches: main
-    paths:
-      - "migrations/**"
-      - ".github/workflows/db.yaml"
-
-env:
-  DATABASE_URL=mysql://${mysqlName}:\${{ secrets.MYSQL_PASSWORD }}@vargas-arts.c2sjnb5f4d57.us-east-1.rds.amazonaws.com:5432/${mysqlName}
-
-jobs:
-  deploy:
-    runs-on: ubuntu-20.04
-    steps:
-      - uses: actions/checkout@v2
-      - name: Use Node.js 14.17.6
-        uses: actions/setup-node@v1
-        with:
-          node-version: 14.17.6
-      - name: Install NPM 8
-        run: npm install -g npm@latest
-      - name: install
-        run: npm install
-      - name: migrate
-        run: npx fuego migrate
-`
-      );
-    },
-    skip: () => !isApp,
-  },
-  {
     title: "Write .gitignore",
     task: () => {
       return fs.writeFileSync(
@@ -650,13 +486,13 @@ build
 dist
 out
 .env
-_fuego
 `
       );
     },
   },
   {
     title: "Write .eslintrc.json",
+    skip: () => isApp,
     task: () => {
       const eslintrc = {
         root: true,
@@ -677,6 +513,7 @@ _fuego
   },
   {
     title: "Write LICENSE",
+    skip: () => isApp,
     task: () => {
       return fs.writeFileSync(
         path.join(root, "LICENSE"),
@@ -799,162 +636,6 @@ export default run;
     skip: () => isApp,
   },
   {
-    title: "Write pages",
-    task: () => {
-      fs.mkdirSync(path.join(root, "pages"));
-      fs.mkdirSync(path.join(root, "pages", "_common"));
-      const files = {
-        "index.tsx": `import React from "react";
-import Layout, { LayoutHead } from "./_common/Layout";
-
-const Home: React.FC = () => <Layout>Welcome!</Layout>;
-
-export const Head = () => <LayoutHead title={"Home"} />;
-
-export default Home;
-`,
-        "_common/Layout.tsx": `import React from "react";
-import DefaultLayout from "@dvargas92495/ui/components/Layout";
-import { Head as DefaultHead } from "@dvargas92495/ui/components/Document";
-
-const Layout: React.FC = ({ children }) => {
-  return <DefaultLayout homeIcon={"Home"}>{children}</DefaultLayout>;
-};
-
-type HeadProps = Omit<Parameters<typeof DefaultHead>[0], "title">;
-
-export const LayoutHead = ({
-  title = "Welcome",
-  ...rest
-}: HeadProps & { title?: string }): React.ReactElement => {
-  return (
-    <DefaultHead title={\`\${title} | ${
-      safeProjectName.split("-")[0]
-    }\`} {...rest} />
-  );
-};
-
-export default Layout;`,
-        "login.tsx": `import React from "react";
-import { SignIn } from "@clerk/clerk-react";
-import Layout, { LayoutHead } from "./_common/Layout";
-
-const LoginPage: React.FC = () => (
-  <Layout>
-    <SignIn />
-  </Layout>
-);
-
-export const Head = (): React.ReactElement => <LayoutHead title={"Log In"} />;
-export default LoginPage;
-`,
-        "signup.tsx": `import React from "react";
-import Layout, { LayoutHead } from "./_common/Layout";
-import { SignUp } from "@clerk/clerk-react";
-
-const Signup: React.FunctionComponent = () => (
-  <Layout>
-    <SignUp />
-  </Layout>
-);
-
-export const Head = (): React.ReactElement => <LayoutHead title={"Sign up"} />;
-export default Signup;
-`,
-        "user.tsx": `import React from "react";
-import Layout, { LayoutHead } from "./_common/Layout";
-import RedirectToLogin from "@dvargas92495/ui/components/RedirectToLogin";
-import clerkUserProfileCss from "@dvargas92495/ui/clerkUserProfileCss";
-import { SignedIn, UserProfile } from "@clerk/clerk-react";
-
-const UserPage: React.FunctionComponent = () => (
-  <Layout>
-    <SignedIn>
-      <UserProfile />
-    </SignedIn>
-    <RedirectToLogin />
-  </Layout>
-);
-
-export const Head = (): React.ReactElement => (
-  <LayoutHead
-    title={"User"}
-    styles={clerkUserProfileCss}
-  />
-);
-export default UserPage;`,
-        "about.tsx": `import React from "react";
-import Layout, { LayoutHead } from "./_common/Layout";
-import About from "@dvargas92495/ui/components/About";
-
-const AboutPage: React.FunctionComponent = () => (
-  <Layout>
-    <About
-      title={"About"}
-      subtitle={"Description"}
-      paragraphs={[]}
-    />
-  </Layout>
-);
-
-export const Head = (): React.ReactElement => <LayoutHead title={"About"} />;
-export default AboutPage;
-`,
-        "contact.tsx": `import React from "react";
-import Layout, { LayoutHead } from "./_common/Layout";
-import Contact from "@dvargas92495/ui/components/Contact";
-
-const ContactPage: React.FunctionComponent = () => (
-  <Layout>
-    <Contact email={"${
-      safeProjectName.includes("-")
-        ? `support@${projectName}`
-        : "dvargas92495@gmail.com"
-    }"} />
-  </Layout>
-);
-
-export const Head = (): React.ReactElement => <LayoutHead title={"Contact Us"} />;
-export default ContactPage;
-`,
-        "privacy-policy.tsx": `import React from "react";
-import Layout, { LayoutHead } from "./_common/Layout";
-import PrivacyPolicy from "@dvargas92495/ui/components/PrivacyPolicy";
-
-const PrivacyPolicyPage: React.FunctionComponent = () => (
-  <Layout>
-    <PrivacyPolicy name={"${safeProjectName}"} domain={"${rawName}"} />
-  </Layout>
-);
-
-export const Head = (): React.ReactElement => (
-  <LayoutHead title={"Privacy Policy"} />
-);
-export default PrivacyPolicyPage;`,
-        "terms-of-use.tsx": `import React from "react";
-import Layout, { LayoutHead } from "./_common/Layout";
-import TermsOfUse from "@dvargas92495/ui/components/TermsOfUse";
-
-const TermsOfUsePage: React.FC = () => (
-  <Layout>
-    <TermsOfUse name={"${safeProjectName}"} domain={"${rawName}"} />
-  </Layout>
-);
-
-export const Head = (): React.ReactElement => (
-  <LayoutHead title={"Terms of Use"} />
-);
-export default TermsOfUsePage;`,
-        "_html.tsx": `export * from "@dvargas92495/ui/components/FuegoRoot";
-export { default as default } from "@dvargas92495/ui/components/FuegoRoot";`,
-      };
-      return Object.entries(files).forEach(([file, content]) =>
-        fs.writeFileSync(path.join(root, "pages", file), content)
-      );
-    },
-    skip: () => !isApp,
-  },
-  {
     title: "Write tests",
     task: () => {
       fs.mkdirSync(path.join(root, "tests"));
@@ -986,198 +667,6 @@ test("Runs Default", () => {
     skip: () => isApp,
   },
   {
-    title: "Set up Clerk",
-    task: () => {
-      return rlp(
-        `Create an application on https://dashboard.clerk.dev/applications called ${projectName}. Press enter when done.`
-      )
-        .then(() =>
-          rlp("Enter the developer api key:").then(
-            (k) => (process.env.CLERK_DEV_API_KEY = k)
-          )
-        )
-        .then(() =>
-          rlp("Enter the developer clerk frontend API url:").then(
-            (k) => (process.env.CLERK_DEV_FRONTEND_API = k)
-          )
-        )
-        .then(() =>
-          console.log(
-            chalk.blue(
-              "Check on custom urls in redirect config. Then create production instance on same settings.\nCurrently, there's a Clerk bug where you have to duplicate this work in production."
-            )
-          )
-        )
-        .then(() =>
-          rlp("Enter the production api key:").then(
-            (k) => (process.env.CLERK_API_KEY = k)
-          )
-        )
-        .then(() =>
-          rlp("Enter the clerk production id, found on the DNS page:").then(
-            (k) => (process.env.CLERK_DNS_ID = k)
-          )
-        );
-    },
-    skip: () => !isApp,
-  },
-  {
-    title: "Write main.tf",
-    task: () => {
-      return Promise.resolve(
-        fs.writeFileSync(
-          path.join(root, "main.tf"),
-          `terraform {
-  backend "remote" {
-    hostname = "app.terraform.io"
-    organization = "VargasArts"
-    workspaces {
-      prefix = "${safeProjectName}"
-    }
-  }
-  required_providers {
-    github = {
-      source = "integrations/github"
-      version = "4.2.0"
-    }
-  }
-}
-
-variable "aws_access_token" {
-  type = string
-}
-
-variable "aws_secret_token" {
-  type = string
-}
-
-variable "github_token" {
-  type = string
-}
-
-variable "secret" {
-  type = string
-}
-
-variable "clerk_api_key" {
-    type = string
-}
-
-variable "mysql_password" {
-  type = string
-}
-
-variable "stripe_public" {
-  type = string
-}
-
-variable "stripe_secret" {
-  type = string
-}
-
-provider "aws" {
-  region = "us-east-1"
-  access_key = var.aws_access_token
-  secret_key = var.aws_secret_token
-}
-
-provider "github" {
-  owner = "dvargas92495"
-  token = var.github_token
-}
-
-module "aws_static_site" {
-  source  = "dvargas92495/static-site/aws"
-  version = "3.2.0"
-
-  domain = "${projectName.includes(".") ? projectName : rawName}"
-  secret = var.secret
-  tags = {
-      Application = "${safeProjectName}"
-  }
-
-  providers = {
-    aws.us-east-1 = aws
-  }
-}
-
-module "aws-serverless-backend" {
-  source  = "dvargas92495/serverless-backend/aws"
-  version = "2.2.1"
-
-  api_name = "${safeProjectName}"${
-            safeProjectName.includes("-")
-              ? ""
-              : `\n  domain  = "${safeProjectName}.davidvargas.me"`
-          }
-}
-
-module "aws_clerk" {
-  source   = "dvargas92495/clerk/aws"
-  version  = "1.0.4"
-
-  zone_id  = module.aws_static_site.route53_zone_id
-  clerk_id = "${process.env.CLERK_DNS_ID}"${
-            safeProjectName.includes("-")
-              ? ""
-              : `\n  subdomain  = "${safeProjectName}"`
-          }
-}
-
-resource "github_actions_secret" "deploy_aws_access_key" {
-  repository       = "${projectName}"
-  secret_name      = "DEPLOY_AWS_ACCESS_KEY"
-  plaintext_value  = module.aws_static_site.deploy-id
-}
-
-resource "github_actions_secret" "deploy_aws_access_secret" {
-  repository       = "${projectName}"
-  secret_name      = "DEPLOY_AWS_ACCESS_SECRET"
-  plaintext_value  = module.aws_static_site.deploy-secret
-}
-
-resource "github_actions_secret" "lambda_aws_access_key" {
-  repository       = "${projectName}"
-  secret_name      = "LAMBDA_AWS_ACCESS_KEY"
-  plaintext_value  = module.aws-serverless-backend.access_key
-}
-
-resource "github_actions_secret" "lambda_aws_access_secret" {
-  repository       = "${projectName}"
-  secret_name      = "LAMBDA_AWS_ACCESS_SECRET"
-  plaintext_value  = module.aws-serverless-backend.secret_key
-}
-
-resource "github_actions_secret" "mysql_password" {
-  repository       = "${projectName}"
-  secret_name      = "MYSQL_PASSWORD"
-  plaintext_value  = var.mysql_password
-}
-
-resource "github_actions_secret" "clerk_api_key" {
-  repository       = "${projectName}"
-  secret_name      = "CLERK_API_KEY"
-  plaintext_value  = var.clerk_api_key
-}
-
-resource "github_actions_secret" "stripe_public" {
-  repository       = "${projectName}"
-  secret_name      = "STRIPE_PUBLIC_KEY"
-  plaintext_value  = var.stripe_public
-}
-
-resource "github_actions_secret" "stripe_secret" {
-  repository       = "${projectName}"
-  secret_name      = "STRIPE_SECRET_KEY"
-  plaintext_value  = var.stripe_secret
-}
-`
-        )
-      );
-    },
-    skip: () => !isApp,
-  },
-  {
     title: "Create a github repo",
     task: () => {
       return axios
@@ -1202,7 +691,7 @@ resource "github_actions_secret" "stripe_secret" {
             : console.log(chalk.red("Failed to check repo", e.response?.data))
         );
     },
-    skip: () => !process.env.GITHUB_TOKEN,
+    skip: () => !process.env.GITHUB_TOKEN || isApp,
   },
   {
     title: "Add NPM Token",
@@ -1244,6 +733,7 @@ resource "github_actions_secret" "stripe_secret" {
   },
   {
     title: "Git init",
+    skip: () => isApp,
     task: () => {
       process.chdir(root);
       return sync("git init", { stdio: "ignore" });
@@ -1251,6 +741,7 @@ resource "github_actions_secret" "stripe_secret" {
   },
   {
     title: "Git add",
+    skip: () => isApp,
     task: () => {
       process.chdir(root);
       return sync("git add -A", { stdio: "ignore" });
@@ -1258,6 +749,7 @@ resource "github_actions_secret" "stripe_secret" {
   },
   {
     title: "Git commit",
+    skip: () => isApp,
     task: () => {
       process.chdir(root);
       return sync('git commit -m "Initial commit from Create Vargas NPM"', {
@@ -1267,6 +759,7 @@ resource "github_actions_secret" "stripe_secret" {
   },
   {
     title: "Git remote",
+    skip: () => isApp,
     task: () => {
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
@@ -1310,296 +803,6 @@ resource "github_actions_secret" "stripe_secret" {
       });
     },
     skip: () => isApp,
-  },
-  {
-    title: "Git push",
-    task: () => {
-      process.chdir(root);
-      return sync(`git push origin main`, { stdio: "ignore" });
-    },
-    skip: () => !isApp,
-  },
-  {
-    title: "Create Site Manager",
-    task: () => {
-      return iam
-        .createUser({
-          UserName: safeProjectName,
-        })
-        .promise()
-        .then(() =>
-          Promise.all([
-            iam
-              .addUserToGroup({
-                UserName: safeProjectName,
-                GroupName: "static-site-managers",
-              })
-              .promise(),
-            ...[
-              "arn:aws:iam::aws:policy/AWSLambda_FullAccess",
-              "arn:aws:iam::aws:policy/AmazonAPIGatewayAdministrator",
-              "arn:aws:iam::aws:policy/AmazonDynamoDBFullAccess",
-              "arn:aws:iam::aws:policy/AmazonSESFullAccess",
-            ].map((PolicyArn) =>
-              iam
-                .attachUserPolicy({
-                  UserName: safeProjectName,
-                  PolicyArn,
-                })
-                .promise()
-            ),
-          ])
-        )
-        .then(() =>
-          iam.createAccessKey({ UserName: safeProjectName }).promise()
-        )
-        .then((creds) => {
-          process.env.AWS_ACCESS_KEY_ID = creds.AccessKey.AccessKeyId;
-          process.env.AWS_SECRET_ACCESS_KEY = creds.AccessKey.SecretAccessKey;
-          fs.appendFileSync(
-            path.resolve(`${process.env.HOME}/.aws/credentials`),
-            `[${safeProjectName}]\naws_access_key_id = ${creds.AccessKey.AccessKeyId}\naws_secret_access_key = ${creds.AccessKey.SecretAccessKey}\n`
-          );
-          console.log(
-            chalk.green("Successfully created keys for", safeProjectName)
-          );
-          return;
-        });
-    },
-    skip: () => !isApp,
-  },
-  {
-    title: "Create Workspace And Kick off Run",
-    task: () => {
-      const tfOpts = {
-        headers: {
-          Authorization: `Bearer ${process.env.TERRAFORM_ORGANIZATION_TOKEN}`,
-          "Content-Type": "application/vnd.api+json",
-        },
-      };
-      const userTfOpts = {
-        ...tfOpts,
-        headers: {
-          ...tfOpts.headers,
-          Authorization: `Bearer ${process.env.TERRAFORM_USER_TOKEN}`,
-        },
-      };
-      return axios
-        .get<{
-          data: { attributes: { "service-provider": string }; id: string }[];
-        }>(
-          "https://app.terraform.io/api/v2/organizations/VargasArts/oauth-clients",
-          tfOpts
-        )
-        .then(
-          (r) =>
-            r.data.data.find(
-              (cl) => cl.attributes["service-provider"] === "github"
-            )?.id
-        )
-        .then((id) =>
-          axios
-            .get(
-              `https://app.terraform.io/api/v2/oauth-clients/${id}/oauth-tokens`,
-              tfOpts
-            )
-            .then((r) => r.data.data[0].id)
-        )
-        .then((id) =>
-          axios
-            .post(
-              "https://app.terraform.io/api/v2/organizations/VargasArts/workspaces",
-              {
-                data: {
-                  type: "workspaces",
-                  attributes: {
-                    name: safeProjectName,
-                    "auto-apply": true,
-                    "vcs-repo": {
-                      "oauth-token-id": id,
-                      identifier: `dvargas92495/${projectName}`,
-                    },
-                  },
-                },
-              },
-              tfOpts
-            )
-            .then((r) => r.data.data.id)
-        )
-        .then((id) =>
-          Promise.all(
-            [
-              { key: "aws_access_token", env: "AWS_ACCESS_KEY_ID" },
-              { key: "aws_secret_token", env: "AWS_SECRET_ACCESS_KEY" },
-              { key: "secret", value: randomstring.generate(32) },
-              { key: "github_token", env: "GITHUB_TOKEN" },
-              { key: "mysql_password", env: "MYSQL_PASSWORD" },
-              { key: "clerk_api_key", env: "CLERK_API_KEY" },
-              { key: "stripe_public", env: "LIVE_STRIPE_PUBLIC" },
-              { key: "stripe_secret", env: "LIVE_STRIPE_SECRET" },
-            ].map(({ key, env, value }) =>
-              axios.post(
-                `https://app.terraform.io/api/v2/workspaces/${id}/vars`,
-                {
-                  data: {
-                    type: "vars",
-                    attributes: {
-                      key,
-                      sensitive: true,
-                      category: "terraform",
-                      value: value || (env && process.env[env]),
-                    },
-                  },
-                },
-                tfOpts
-              )
-            )
-          )
-            .then(() =>
-              axios.post(
-                `https://app.terraform.io/api/v2/runs`,
-                {
-                  data: {
-                    attributes: {
-                      message: "Kicking off first run",
-                    },
-                    type: "runs",
-                    relationships: {
-                      workspace: {
-                        data: {
-                          type: "workspaces",
-                          id,
-                        },
-                      },
-                    },
-                  },
-                },
-                userTfOpts
-              )
-            )
-            .then((r) => {
-              const runId = r.data.data.id;
-              console.log(chalk.green(`Successfully kicked off run ${runId}`));
-              const checkTerraformStatus = (): Promise<void> =>
-                axios
-                  .get(
-                    `https://app.terraform.io/api/v2/runs/${runId}`,
-                    userTfOpts
-                  )
-                  .then((d) => {
-                    const { status } = d.data.data.attributes;
-                    if (
-                      status === "pending" ||
-                      status === "planning" ||
-                      status === "applying" ||
-                      status === "plan_queued"
-                    ) {
-                      console.log(
-                        chalk.yellow(
-                          "Checking terraform run again at",
-                          new Date().toJSON()
-                        )
-                      );
-                      return new Promise((resolve) =>
-                        setTimeout(() => resolve(checkTerraformStatus()), 30000)
-                      );
-                    } else if (status === "applied") {
-                      console.log(
-                        chalk.green(
-                          "Resources successfully created at",
-                          new Date().toJSON()
-                        )
-                      );
-                      return;
-                    } else {
-                      console.log(
-                        chalk.red(JSON.stringify(d.data.data.attributes))
-                      );
-                      throw new Error(
-                        "Failed to create resources. aborting..."
-                      );
-                    }
-                  });
-              return checkTerraformStatus();
-            })
-            .catch((e) => {
-              console.log(
-                chalk.yellow(
-                  `Failed to kick off the terraform run. Do so manually. Error:`
-                )
-              );
-              console.log(chalk.yellow(e));
-            })
-        );
-    },
-    skip: () => !isApp,
-  },
-  {
-    title: "Write .env",
-    task: () => {
-      return Promise.resolve(
-        fs.writeFileSync(
-          path.join(root, ".env"),
-          `API_URL=http://localhost:3003
-HOST=http://localhost:3000
-CLERK_API_KEY=${process.env.CLERK_DEV_API_KEY}
-CLERK_FRONTEND_API=${process.env.CLERK_DEV_FRONTEND_API}
-STRIPE_PUBLIC_KEY=${process.env.TEST_STRIPE_PUBLIC}
-STRIPE_SECRET_KEY=${process.env.TEST_STRIPE_SECRET}
-DATABASE_URL=mysql://${mysqlName}:${mysqlName}@localhost:5432/${mysqlName}
-`
-        )
-      );
-    },
-    skip: () => !isApp,
-  },
-  {
-    title: "Kick off first action",
-    task: () =>
-      axios
-        .post(
-          `https://api.github.com/repos/dvargas92495/${projectName}/actions/workflows/main.yaml/dispatches`,
-          { ref: "main" },
-          githubOpts
-        )
-        .then(
-          () =>
-            new Promise((resolve) =>
-              setTimeout(
-                () =>
-                  resolve(
-                    axios
-                      .get(
-                        `https://api.github.com/repos/dvargas92495/${projectName}/actions/runs`
-                      )
-                      .then((r) => checkGhStatus(r.data.workflow_runs[0].id))
-                  ),
-                10000
-              )
-            )
-        ),
-    skip: () => !isApp,
-  },
-  {
-    title: "Manual Steps to run",
-    task: () => {
-      console.log(chalk.blue("Manual steps to run:"));
-      console.log(
-        chalk.blue(
-          "- Setup Google Project on https://console.cloud.google.com/projectselector2/home/dashboard?organizationId=0"
-        )
-      );
-      console.log(
-        chalk.blue(
-          `- Create OauthClient id on https://console.cloud.google.com/apis/credentials?project=${safeProjectName}`
-        )
-      );
-      console.log(
-        chalk.blue("- Click Deploy on the Clerk Production Instance")
-      );
-      console.log(chalk.blue("- Copy "));
-    },
-    skip: () => !isApp,
   },
 ];
 
@@ -1645,16 +848,16 @@ const run = async () => {
 if (flags.task) {
   const task = tasks.find((t) => t.title === flags.task);
   if (task)
-    runTask(task).then((s) =>
-      s.success
-        ? console.log(chalk.green("Done!"))
-        : console.error(chalk.redBright(s.message))
-    );
+    runTask(task)
+      .then((s) =>
+        s.success
+          ? console.log(chalk.green("Done!"))
+          : console.error(chalk.redBright(s.message))
+      );
   else
     console.error(chalk.redBright(`Failed to find task of name ${flags.task}`));
 } else {
   run()
     .then(() => console.log(chalk.greenBright(`${projectName} is Ready!`)))
-    .catch((e) => console.error(chalk.redBright(e)))
-    .finally(() => rl.close());
+    .catch((e) => console.error(chalk.redBright(e)));
 }

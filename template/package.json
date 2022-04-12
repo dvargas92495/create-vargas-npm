@@ -1,9 +1,9 @@
 {
-  "name": "{{rawName}}",
-  "description": "Description for {{rawName}}",
+  "name": "{{{rawName}}}",
+  "description": "Description for {{{rawName}}}",
   "version": "0.0.0",
   "license": "MIT",
-  "repository": "dvargas92495/{{projectName}}",
+  "repository": "dvargas92495/{{{projectName}}}",
   "sideEffects": false,
   "scripts": {
     "format": "prettier --write \"**/*.tsx\"",
