@@ -7,9 +7,6 @@ import os from "os";
 import spawn, { sync } from "cross-spawn";
 import sodium from "tweetsodium";
 import axios from "axios";
-import randomstring from "randomstring";
-import AWS from "aws-sdk";
-import mysql from "mysql";
 import createRemixStack from "./tasks/createRemixStack";
 import meow from "meow";
 
@@ -27,23 +24,12 @@ ${chalk.blue("Options")}:
   --app               Project created will be a full stack application
 `;
 
-AWS.config.credentials = new AWS.SharedIniFileCredentials({
-  profile: "davidvargas",
-});
-const route53 = new AWS.Route53({ apiVersion: "2013-04-01" });
-const domains = new AWS.Route53Domains({
-  apiVersion: "2014-05-15",
-});
-const rds = new AWS.RDS({ apiVersion: "2014-10-31" });
 const npmToken = process.env.NPM_TOKEN || "";
 
 const rawName = process.argv[2] || "";
 const projectName = rawName
   .replace(/^@dvargas92495\//, "")
   .replace(/\.davidvargas\.me$/, "");
-const safeProjectName = projectName.replace(/\./g, "-");
-const mysqlName = safeProjectName.replace(/-/g, "_");
-const DomainName = rawName.split(".").slice(-2).join(".");
 
 const argv = process.argv.slice(3);
 const { flags, showHelp, showVersion } = meow(helpText, {
@@ -70,60 +56,6 @@ const githubOpts = {
   },
 };
 
-const getHostedZoneIdByName = async () => {
-  let finished = false;
-  let props: { Marker?: string } = {};
-  while (!finished) {
-    const {
-      HostedZones,
-      IsTruncated,
-      NextMarker,
-    } = await route53.listHostedZones(props).promise();
-    const zone = HostedZones.find((i) => i.Name === `${DomainName}.`);
-    if (zone) {
-      return zone.Id.replace(/\/hostedzone\//, "");
-    }
-    finished = !IsTruncated;
-    props = { Marker: NextMarker };
-  }
-
-  return null;
-};
-
-const checkAvailability = (): Promise<string> =>
-  domains
-    .checkDomainAvailability({ DomainName })
-    .promise()
-    .then((r) =>
-      r.Availability === "PENDING" ? checkAvailability() : r.Availability
-    );
-
-const checkDomainStatus = (OperationId: string): Promise<void> =>
-  domains
-    .getOperationDetail({ OperationId })
-    .promise()
-    .then((d) => {
-      if (d.Status === "IN_PROGRESS" || d.Status === "SUBMITTED") {
-        console.log(
-          chalk.yellow(
-            "Checking domain registration again at",
-            new Date().toJSON()
-          )
-        );
-        return new Promise((resolve) =>
-          setTimeout(() => resolve(checkDomainStatus(OperationId)), 30000)
-        );
-      } else if (d.Status === "SUCCESSFUL") {
-        console.log(
-          chalk.green("Domain successfully registered at", new Date().toJSON())
-        );
-        return;
-      } else {
-        console.log(chalk.red(JSON.stringify(d)));
-        throw new Error("Failed to register domain. aborting...");
-      }
-    });
-
 type Task = {
   title: string;
   task: () => void | Promise<void>;
@@ -148,187 +80,6 @@ const tasks: Task[] = [
       }
     },
     skip: () => isApp,
-  },
-  {
-    title: "Verify site ownership",
-    task: () => {
-      return getHostedZoneIdByName().then((id) => {
-        if (id) {
-          return console.log(
-            chalk.yellow(
-              "Already own domain in hosted zone",
-              id,
-              "moving on..."
-            )
-          );
-        }
-        return checkAvailability().then((r) => {
-          if (r !== "AVAILABLE") {
-            return domains
-              .getDomainSuggestions({
-                DomainName,
-                OnlyAvailable: true,
-                SuggestionCount: 10,
-              })
-              .promise()
-              .then((s) => {
-                throw new Error(
-                  `Domain ${DomainName} is not available and not owned (${r}), try one of these:\n${s.SuggestionsList?.map(
-                    (s) => `- ${s.DomainName}`
-                  )}\naborting...`
-                );
-              });
-          }
-          console.log(chalk.blue("Buying domain", DomainName));
-          const {
-            AddressLine1 = "",
-            AddressLine2 = "",
-            City = "",
-            State = "",
-            ZipCode = "",
-            PhoneNumber = "",
-          } = JSON.parse(process.env.CONTACT_DETAIL || "{}");
-          if (
-            !AddressLine1 ||
-            !AddressLine2 ||
-            !City ||
-            !State ||
-            !ZipCode ||
-            !PhoneNumber
-          ) {
-            throw new Error(
-              "Invalid Address entered in CONTACT_DETAIL stringified JSON env variable"
-            );
-          }
-          const Contact = {
-            ContactType: "PERSON",
-            CountryCode: "US",
-            Email: "dvargas92495@gmail.com",
-            FirstName: "David",
-            LastName: "Vargas",
-            AddressLine1,
-            AddressLine2,
-            City,
-            PhoneNumber,
-            State,
-            ZipCode,
-          };
-          return domains
-            .registerDomain({
-              TechContact: Contact,
-              RegistrantContact: Contact,
-              AdminContact: Contact,
-              DomainName,
-              DurationInYears: 1,
-            })
-            .promise()
-            .then((r) => {
-              console.log(
-                chalk.green(
-                  "Successfully bought",
-                  DomainName,
-                  "operation id:",
-                  r.OperationId
-                )
-              );
-              return checkDomainStatus(r.OperationId);
-            });
-        });
-      });
-    },
-    skip: () => !isApp,
-  },
-  {
-    title: "Create RDS DB",
-    task: () =>
-      rds
-        .describeDBInstances({ DBInstanceIdentifier: "vargas-arts" })
-        .promise()
-        .then((r) => {
-          if (!r.DBInstances?.length)
-            throw new Error("Could not find main RDS instance");
-          const { Address, Port } = r.DBInstances[0].Endpoint || {};
-          const connection = mysql.createConnection({
-            host: Address,
-            port: Port,
-            user: "dvargas92495",
-            password: process.env.RDS_MASTER_PASSWORD,
-          });
-          connection.connect();
-          process.env.MYSQL_PASSWORD = randomstring.generate(16);
-          process.env.MYSQL_HOST = Address;
-          process.env.MYSQL_PORT = `${Port}`;
-          return new Promise((resolve) =>
-            connection.query(`CREATE DATABASE ${mysqlName}`, resolve)
-          )
-            .then(
-              () =>
-                new Promise((resolve) =>
-                  connection.query(
-                    `CREATE USER '${mysqlName}'@'%' IDENTIFIED BY '${process.env.MYSQL_PASSWORD}'`,
-                    resolve
-                  )
-                )
-            )
-            .then(
-              () =>
-                new Promise((resolve) =>
-                  connection.query(
-                    `GRANT ALL PRIVILEGES ON ${mysqlName} . * TO '${mysqlName}'@'%'`,
-                    resolve
-                  )
-                )
-            )
-            .then(
-              () =>
-                new Promise((resolve) =>
-                  connection.query(`FLUSH PRIVILEGES`, resolve)
-                )
-            )
-            .then(() => connection.end());
-        }),
-    skip: () => !isApp,
-  },
-  {
-    title: "Create local DB",
-    task: () => {
-      const connection = mysql.createConnection({
-        host: "localhost",
-        port: 5432,
-        user: "root",
-        password: process.env.LOCAL_MYSQL_PASSWORD,
-      });
-      connection.connect();
-      return new Promise((resolve) =>
-        connection.query(`CREATE DATABASE ${mysqlName}`, resolve)
-      )
-        .then(
-          () =>
-            new Promise((resolve) =>
-              connection.query(
-                `CREATE USER '${mysqlName}'@'%' IDENTIFIED BY '${mysqlName}'`,
-                resolve
-              )
-            )
-        )
-        .then(
-          () =>
-            new Promise((resolve) =>
-              connection.query(
-                `GRANT ALL PRIVILEGES ON ${mysqlName} . * TO '${mysqlName}'@'%'`,
-                resolve
-              )
-            )
-        )
-        .then(
-          () =>
-            new Promise((resolve) =>
-              connection.query(`FLUSH PRIVILEGES`, resolve)
-            )
-        )
-        .then(() => connection.end());
-    },
-    skip: () => !isApp,
   },
   {
     title: "Make Project Directory",

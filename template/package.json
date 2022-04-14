@@ -1,6 +1,6 @@
 {
-  "name": "{{{rawName}}}",
-  "description": "Description for {{{rawName}}}",
+  "name": "{{{projectName}}}",
+  "description": "Description for {{{projectName}}}",
   "version": "0.0.0",
   "license": "MIT",
   "repository": "dvargas92495/{{{projectName}}}",

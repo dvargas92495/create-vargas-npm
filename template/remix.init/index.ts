@@ -38,13 +38,13 @@ type Task = {
 };
 
 const main = ({ rootDirectory }: { rootDirectory: string }) => {
-  const rawName = path.basename(rootDirectory);
-  const projectName = rawName
-    .replace(/^@dvargas92495\//, "")
-    .replace(/\.davidvargas\.me$/, "");
+  const projectName = path.basename(rootDirectory);
   const safeProjectName = projectName.replace(/\./g, "-");
   const mysqlName = safeProjectName.replace(/-/g, "_");
-  const DomainName = rawName.split(".").slice(-2).join(".");
+  const DomainName = projectName.split(".").slice(-2).join(".");
+  const tfclerk = safeProjectName.includes("-")
+    ? ""
+    : `\n  subdomain  = "${safeProjectName}"`;
 
   const getHostedZoneIdByName = async () => {
     let finished = false;
@@ -125,7 +125,7 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
         }
       });
 
-  const preTasks = [
+  const tasks: Task[] = [
     {
       title: "Verify site ownership",
       task: () => {
@@ -304,10 +304,6 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
           .then(() => connection.end());
       },
     },
-  ];
-  console.log("Still", preTasks.length, "pre tasks to migrate");
-
-  const tasks: Task[] = [
     {
       title: "Set up Clerk",
       task: () => {
@@ -346,19 +342,19 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
       },
     },
     {
-      title: "Run Mustache",
+      title: "Mustache",
       task: () => {
         const view = {
-          rawName,
           safeProjectName,
           projectName,
           DomainName,
           mysqlName,
-          displayName: rawName
+          displayName: projectName
             .split(".")
             .map((s) => `${s.slice(0, 1).toUpperCase()}${s.slice(1)}`)[0],
           year: new Date().getFullYear(),
           CLERK_DNS_ID: process.env.CLERK_DNS_ID,
+          tfclerk,
         };
         const readDir = (s: string): string[] =>
           fs.existsSync(s)
@@ -372,7 +368,9 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
             : [];
         const files = readDir(rootDirectory);
         files
-          .filter((f) => !f.includes("remix.init"))
+          .filter(
+            (f) => !f.includes("remix.init") && !f.includes("node_modules")
+          )
           .forEach((f) => {
             try {
               fs.writeFileSync(
@@ -387,6 +385,7 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
                   }
                 )
               );
+              console.log("Mustached", f);
             } catch (e) {
               console.error(chalk.red(`Failed to mustache ${f}`));
             }
@@ -406,7 +405,7 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
                     "https://api.github.com/user/repos",
                     {
                       name: projectName,
-                      homepage: rawName,
+                      homepage: projectName,
                     },
                     githubOpts
                   )
@@ -784,7 +783,7 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
   ];
 
   const run = async () => {
-    for (const task of tasks.slice(1, 2)) {
+    for (const task of tasks) {
       console.log(chalk.blue("Running", task.title, "..."));
       if (task.skip?.()) {
         console.log(chalk.blueBright("Skipped", task.title));

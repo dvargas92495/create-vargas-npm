@@ -9,7 +9,7 @@ on:
       - ".github/workflows/main.yaml"
 
 env:
-  API_URL: https://api.{{{rawName}}}
+  API_URL: https://api.{{{projectName}}}
   AWS_ACCESS_KEY_ID: \${{ secrets.DEPLOY_AWS_ACCESS_KEY }}
   AWS_SECRET_ACCESS_KEY: \${{ secrets.DEPLOY_AWS_ACCESS_SECRET }}
   AWS_REGION: us-east-1
@@ -38,4 +38,4 @@ jobs:
       - name: build
         run: npx fuego build
       - name: deploy
-        run: npx fuego deploy{{projectName.includes(".") ? "" : ` --domain {{{rawName}}}`}}
+        run: npx fuego deploy

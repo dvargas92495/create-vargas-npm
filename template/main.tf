@@ -71,11 +71,8 @@ module "aws_static_site" {
 
   origin_memory_size = 5120
   origin_timeout = 20
-  domain = "{{{DomainName}}}"
+  domain = "{{{projectName}}}"
   secret = var.secret
-  tags = {
-      Application = "{{{safeProjectName}}}"
-  }
 
   providers = {
     aws.us-east-1 = aws
@@ -87,6 +84,7 @@ module "aws-serverless-backend" {
     version = "2.5.0"
 
     api_name  = "{{{safeProjectName}}}"
+    domain    = "{{{projectName}}}"
     directory = "api"
 }
 
@@ -95,7 +93,7 @@ module "aws_clerk" {
   version  = "1.0.4"
 
   zone_id  = module.aws_static_site.route53_zone_id
-  clerk_id = "{{CLERK_DNS_ID}}"
+  clerk_id = "{{{CLERK_DNS_ID}}}"{{{tfClerk}}}
 }
 
 resource "github_actions_secret" "deploy_aws_access_key" {

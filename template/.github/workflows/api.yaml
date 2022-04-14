@@ -13,7 +13,7 @@ env:
   AWS_REGION: us-east-1
   CLERK_API_KEY: \${{ secrets.CLERK_API_KEY }}
   DATABASE_URL: mysql://{{{mysqlName}}}:\${{ secrets.MYSQL_PASSWORD }}@vargas-arts.c2sjnb5f4d57.us-east-1.rds.amazonaws.com:5432/{{{mysqlName}}}
-  HOST: https://{{{rawName}}}
+  HOST: https://{{{projectName}}}
   IS_PRODUCTION: 1
   STRIPE_SECRET_KEY: \${{ secrets.STRIPE_SECRET_KEY }}
   STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
