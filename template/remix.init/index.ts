@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-import chalk from "chalk";
-import fs from "fs";
-import path from "path";
-import spawn, { sync } from "cross-spawn";
-import axios from "axios";
-import randomstring from "randomstring";
 import AWS from "aws-sdk";
-import readline from "readline";
-import mysql from "mysql";
+import axios from "axios";
+import chalk from "chalk";
+import spawn, { sync } from "cross-spawn";
+import fs from "fs";
 import Mustache from "mustache";
+import mysql from "mysql";
+import path from "path";
+import randomstring from "randomstring";
+import readline from "readline";
 
 AWS.config.credentials = new AWS.SharedIniFileCredentials({
   profile: "davidvargas",
