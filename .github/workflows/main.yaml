@@ -3,7 +3,6 @@ on:
   push:
     branches: main
     paths:
-      - "index.ts"
       - "package.json"
       - ".github/workflows/main.yaml"
 

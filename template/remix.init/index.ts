@@ -10,27 +10,6 @@ import path from "path";
 import randomstring from "randomstring";
 import readline from "readline";
 
-AWS.config.credentials = new AWS.SharedIniFileCredentials({
-  profile: "davidvargas",
-});
-const iam = new AWS.IAM({ apiVersion: "2010-05-08" });
-const route53 = new AWS.Route53({ apiVersion: "2013-04-01" });
-const domains = new AWS.Route53Domains({
-  apiVersion: "2014-05-15",
-});
-const rds = new AWS.RDS({ apiVersion: "2014-10-31" });
-const githubOpts = {
-  headers: {
-    Authorization: `token ${process.env.GITHUB_TOKEN}`,
-  },
-};
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
-const rlp = (q: string) =>
-  new Promise<string>((resolve) => rl.question(q, resolve));
-
 type Task = {
   title: string;
   task: () => void | Promise<unknown>;
@@ -38,6 +17,26 @@ type Task = {
 };
 
 const main = ({ rootDirectory }: { rootDirectory: string }) => {
+  AWS.config.credentials = new AWS.SharedIniFileCredentials({
+    profile: "davidvargas",
+  });
+  const iam = new AWS.IAM({ apiVersion: "2010-05-08" });
+  const route53 = new AWS.Route53({ apiVersion: "2013-04-01" });
+  const domains = new AWS.Route53Domains({
+    apiVersion: "2014-05-15",
+  });
+  const rds = new AWS.RDS({ apiVersion: "2014-10-31" });
+  const githubOpts = {
+    headers: {
+      Authorization: `token ${process.env.GITHUB_TOKEN}`,
+    },
+  };
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  const rlp = (q: string) =>
+    new Promise<string>((resolve) => rl.question(q, resolve));
   const projectName = path.basename(rootDirectory);
   const safeProjectName = projectName.replace(/\./g, "-");
   const mysqlName = safeProjectName.replace(/-/g, "_");
@@ -815,7 +814,7 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
     }
   };
 
-  run()
+  return run()
     .then(() => console.log(chalk.greenBright(`${projectName} is Ready!`)))
     .catch((e) => console.error(chalk.redBright(e)))
     .finally(() => rl.close());
