@@ -7,7 +7,6 @@ import os from "os";
 import spawn, { sync } from "cross-spawn";
 import sodium from "tweetsodium";
 import axios from "axios";
-import createRemixStack from "./tasks/createRemixStack";
 import meow from "meow";
 
 const helpText = `
@@ -37,7 +36,6 @@ const { flags, showHelp, showVersion } = meow(helpText, {
   booleanDefault: undefined,
   description: false,
   flags: {
-    app: { type: "boolean" },
     help: { type: "string", alias: "h" },
     react: { type: "boolean" },
     task: { type: "string" },
@@ -48,7 +46,6 @@ if (flags.help) showHelp();
 if (flags.version) showVersion();
 
 const isReact = flags.react;
-const isApp = rawName.includes(".") || flags.app || false;
 const root = path.resolve(projectName);
 const githubOpts = {
   headers: {
@@ -79,21 +76,14 @@ const tasks: Task[] = [
         );
       }
     },
-    skip: () => isApp,
   },
   {
     title: "Make Project Directory",
     task: () => fs.mkdirSync(projectName),
-    skip: () => isApp || fs.existsSync(projectName),
-  },
-  {
-    title: "Create Remix Stack",
-    task: () => createRemixStack({ projectDir: projectName }),
-    skip: () => !isApp,
+    skip: () => fs.existsSync(projectName),
   },
   {
     title: "Write Package JSON",
-    skip: () => isApp,
     task: () => {
       const packageJson: any = {
         name: rawName,
@@ -154,11 +144,9 @@ const tasks: Task[] = [
         JSON.stringify(jestConfig, null, 2) + os.EOL
       );
     },
-    skip: () => isApp,
   },
   {
     title: "Write tsconfig.json",
-    skip: () => isApp,
     task: () => {
       const tsconfig = {
         compilerOptions: {
@@ -181,7 +169,7 @@ const tasks: Task[] = [
           allowSyntheticDefaultImports: true,
           skipLibCheck: true,
         },
-        include: ["src", ...(isApp ? ["pages", "functions", "db"] : [])],
+        include: ["src"],
         exclude: ["node_modules", "**/__tests__/*"],
       };
 
@@ -225,7 +213,6 @@ jobs:
 `
       );
     },
-    skip: () => isApp,
   },
   {
     title: "Write .gitignore",
@@ -243,7 +230,6 @@ out
   },
   {
     title: "Write .eslintrc.json",
-    skip: () => isApp,
     task: () => {
       const eslintrc = {
         root: true,
@@ -264,7 +250,6 @@ out
   },
   {
     title: "Write LICENSE",
-    skip: () => isApp,
     task: () => {
       return fs.writeFileSync(
         path.join(root, "LICENSE"),
@@ -295,7 +280,6 @@ SOFTWARE.
   },
   {
     title: "Install Dev Packages",
-    skip: () => isApp,
     task: () => {
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
@@ -340,7 +324,7 @@ SOFTWARE.
   },
   {
     title: "Install Packages",
-    skip: () => isApp || !isReact,
+    skip: () => !isReact,
     task: () => {
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
@@ -384,7 +368,6 @@ export default run;
         );
       }
     },
-    skip: () => isApp,
   },
   {
     title: "Write tests",
@@ -415,7 +398,6 @@ test("Runs Default", () => {
         );
       }
     },
-    skip: () => isApp,
   },
   {
     title: "Create a github repo",
@@ -430,7 +412,6 @@ test("Runs Default", () => {
                   "https://api.github.com/user/repos",
                   {
                     name: projectName,
-                    ...(isApp ? { homepage: rawName } : {}),
                   },
                   githubOpts
                 )
@@ -442,7 +423,7 @@ test("Runs Default", () => {
             : console.log(chalk.red("Failed to check repo", e.response?.data))
         );
     },
-    skip: () => !process.env.GITHUB_TOKEN || isApp,
+    skip: () => !process.env.GITHUB_TOKEN,
   },
   {
     title: "Add NPM Token",
@@ -480,11 +461,9 @@ test("Runs Default", () => {
           )
         );
     },
-    skip: () => isApp,
   },
   {
     title: "Git init",
-    skip: () => isApp,
     task: () => {
       process.chdir(root);
       return sync("git init", { stdio: "ignore" });
@@ -492,7 +471,6 @@ test("Runs Default", () => {
   },
   {
     title: "Git add",
-    skip: () => isApp,
     task: () => {
       process.chdir(root);
       return sync("git add -A", { stdio: "ignore" });
@@ -500,7 +478,6 @@ test("Runs Default", () => {
   },
   {
     title: "Git commit",
-    skip: () => isApp,
     task: () => {
       process.chdir(root);
       return sync('git commit -m "Initial commit from Create Vargas NPM"', {
@@ -510,7 +487,6 @@ test("Runs Default", () => {
   },
   {
     title: "Git remote",
-    skip: () => isApp,
     task: () => {
       process.chdir(root);
       return new Promise<void>((resolve, reject) => {
@@ -553,7 +529,6 @@ test("Runs Default", () => {
         });
       });
     },
-    skip: () => isApp,
   },
 ];
 
@@ -599,12 +574,11 @@ const run = async () => {
 if (flags.task) {
   const task = tasks.find((t) => t.title === flags.task);
   if (task)
-    runTask(task)
-      .then((s) =>
-        s.success
-          ? console.log(chalk.green("Done!"))
-          : console.error(chalk.redBright(s.message))
-      );
+    runTask(task).then((s) =>
+      s.success
+        ? console.log(chalk.green("Done!"))
+        : console.error(chalk.redBright(s.message))
+    );
   else
     console.error(chalk.redBright(`Failed to find task of name ${flags.task}`));
 } else {
