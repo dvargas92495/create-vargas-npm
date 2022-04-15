@@ -41,19 +41,15 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
   const safeProjectName = projectName.replace(/\./g, "-");
   const mysqlName = safeProjectName.replace(/-/g, "_");
   const DomainName = projectName.split(".").slice(-2).join(".");
-  const tfclerk = safeProjectName.includes("-")
-    ? ""
-    : `\n  subdomain  = "${safeProjectName}"`;
+  const isSubdomain = projectName.split(".").length > 2;
 
   const getHostedZoneIdByName = async () => {
     let finished = false;
     let props: { Marker?: string } = {};
     while (!finished) {
-      const {
-        HostedZones,
-        IsTruncated,
-        NextMarker,
-      } = await route53.listHostedZones(props).promise();
+      const { HostedZones, IsTruncated, NextMarker } = await route53
+        .listHostedZones(props)
+        .promise();
       const zone = HostedZones.find((i) => i.Name === `${DomainName}.`);
       if (zone) {
         return zone.Id.replace(/\/hostedzone\//, "");
@@ -116,7 +112,15 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
             setTimeout(() => resolve(checkGhStatus(id)), 30000)
           );
         } else if (r.data.status === "completed") {
-          console.log(chalk.green("Site deployed at", new Date().toJSON()));
+          if (r.data.conclusion === "success") {
+            console.log(chalk.green("Site deployed at", new Date().toJSON()));
+          } else {
+            console.log(
+              chalk.yellow(
+                `Action completed with conclusion ${r.data.conclusion}. Time to investigate...`
+              )
+            );
+          }
           return;
         } else {
           console.log(chalk.red(r.data.status));
@@ -307,7 +311,9 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
       title: "Set up Clerk",
       task: () => {
         return rlp(
-          `Create an application on https://dashboard.clerk.dev/applications called ${projectName}. Press enter when done.`
+          isSubdomain
+            ? `Navigate to the clerk project linked to ${DomainName}. Press enter when done.`
+            : `Create an application on https://dashboard.clerk.dev/applications called ${projectName}. Press enter when done.`
         )
           .then(() =>
             rlp("Enter the developer api key:").then(
@@ -319,23 +325,24 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
               (k) => (process.env.CLERK_DEV_FRONTEND_API = k)
             )
           )
-          .then(() =>
-            console.log(
-              chalk.blue(
-                "Check on custom urls in redirect config. Then create production instance on same settings.\nCurrently, there's a Clerk bug where you have to duplicate this work in production."
-              )
-            )
-          )
+          .then(() => {
+            if (isSubdomain) {
+              console.log(
+                chalk.blue(
+                  "Check on custom urls in redirect config. Then create production instance on same settings.\nCurrently, there's a Clerk bug where you have to duplicate this work in production."
+                )
+              );
+              return rlp(
+                "Enter the clerk production id, found on the DNS page:"
+              ).then((k) => {
+                process.env.CLERK_DNS_ID = k;
+              });
+            }
+            return Promise.resolve();
+          })
           .then(() =>
             rlp("Enter the production api key:").then(
               (k) => (process.env.CLERK_API_KEY = k)
-            )
-          )
-          .then(() =>
-            rlp("Enter the clerk production id, found on the DNS page:").then(
-              (k) => {
-                process.env.CLERK_DNS_ID = k;
-              }
             )
           );
       },
@@ -343,17 +350,27 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
     {
       title: "Mustache",
       task: () => {
+        const projectParts = projectName.split(".");
         const view = {
           safeProjectName,
           projectName,
           DomainName,
           mysqlName,
-          displayName: projectName
-            .split(".")
-            .map((s) => `${s.slice(0, 1).toUpperCase()}${s.slice(1)}`)[0],
+          displayName: projectParts.map(
+            (s) => `${s.slice(0, 1).toUpperCase()}${s.slice(1)}`
+          )[0],
           year: new Date().getFullYear(),
-          CLERK_DNS_ID: process.env.CLERK_DNS_ID,
-          tfclerk,
+          tfclerk: !isSubdomain
+            ? `
+module "aws_clerk" {
+  source   = "dvargas92495/clerk/aws"
+  version  = "1.0.4"
+
+  zone_id  = module.aws_static_site.route53_zone_id
+  clerk_id = "${process.env.CLERK_DNS_ID}"
+}
+`
+            : ``,
         };
         const readDir = (s: string): string[] =>
           fs.existsSync(s)
@@ -384,7 +401,6 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
                   }
                 )
               );
-              console.log("Mustached", f);
             } catch (e) {
               console.error(chalk.red(`Failed to mustache ${f}`));
             }
@@ -421,21 +437,18 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
     {
       title: "Git init",
       task: () => {
-        process.chdir(rootDirectory);
         return sync("git init", { stdio: "ignore" });
       },
     },
     {
       title: "Git add",
       task: () => {
-        process.chdir(rootDirectory);
         return sync("git add -A", { stdio: "ignore" });
       },
     },
     {
       title: "Git commit",
       task: () => {
-        process.chdir(rootDirectory);
         return sync('git commit -m "Initial commit from Remix Fuego Stack"', {
           stdio: "ignore",
         });
@@ -444,7 +457,6 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
     {
       title: "Git remote",
       task: () => {
-        process.chdir(rootDirectory);
         return new Promise<void>((resolve, reject) => {
           const child = spawn(
             "git",
@@ -471,7 +483,6 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
     {
       title: "Git push",
       task: () => {
-        process.chdir(rootDirectory);
         return sync(`git push origin main`, { stdio: "ignore" });
       },
     },
@@ -596,40 +607,35 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
                   key: "stripe_webhook_secret",
                   env: "LIVE_STRIPE_WEBHOOK_SECRET",
                 },
-              ]
-                .filter((d) => {
-                  const inEnv = !!process.env[d.env];
-                  if (!inEnv && !d.value) {
-                    console.log(
-                      chalk.yellow(
-                        "Did not find value or env",
-                        d.env,
-                        "for key",
-                        d.key,
-                        "skipping..."
-                      )
-                    );
-                    return false;
-                  }
-                  return true;
-                })
-                .map(({ key, env, value }) =>
-                  axios.post(
-                    `https://app.terraform.io/api/v2/workspaces/${id}/vars`,
-                    {
-                      data: {
-                        type: "vars",
-                        attributes: {
-                          key,
-                          sensitive: true,
-                          category: "terraform",
-                          value: value || (env && process.env[env]),
-                        },
+              ].map(({ key, env, value }) => {
+                const inEnv = !!process.env[env || ""];
+                if (!inEnv && !value) {
+                  console.log(
+                    chalk.yellow(
+                      "Did not find value or env",
+                      env,
+                      "for key",
+                      key,
+                      "be sure to edit it later!"
+                    )
+                  );
+                }
+                return axios.post(
+                  `https://app.terraform.io/api/v2/workspaces/${id}/vars`,
+                  {
+                    data: {
+                      type: "vars",
+                      attributes: {
+                        key,
+                        sensitive: true,
+                        category: "terraform",
+                        value: value || (env && process.env[env]) || "",
                       },
                     },
-                    tfOpts
-                  )
-                )
+                  },
+                  tfOpts
+                );
+              })
             )
               .then(() =>
                 axios.post(
@@ -719,7 +725,7 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
       task: () => {
         return Promise.resolve(
           fs.writeFileSync(
-            path.join(rootDirectory, ".env"),
+            ".env",
             `API_URL=http://localhost:3003
   CLERK_API_KEY=${process.env.CLERK_DEV_API_KEY}
   CLERK_FRONTEND_API=${process.env.CLERK_DEV_FRONTEND_API}
@@ -760,23 +766,25 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
           ),
     },
     {
-      title: "Manual Steps to run",
+      title: "Execute these Manual Steps:",
       task: () => {
-        console.log(chalk.blue("Manual steps to run:"));
-        console.log(
-          chalk.blue(
-            "- Setup Google Project on https://console.cloud.google.com/projectselector2/home/dashboard?organizationId=0"
-          )
-        );
-        console.log(
-          chalk.blue(
-            `- Create OauthClient id on https://console.cloud.google.com/apis/credentials?project=${safeProjectName}`
-          )
-        );
-        console.log(
-          chalk.blue("- Click Deploy on the Clerk Production Instance")
-        );
-        console.log(chalk.blue("- Copy "));
+        if (!isSubdomain) {
+          console.log(
+            chalk.blue(
+              "- Setup Google Project on https://console.cloud.google.com/projectselector2/home/dashboard?organizationId=0"
+            )
+          );
+          console.log(
+            chalk.blue(
+              `- Create OauthClient id on https://console.cloud.google.com/apis/credentials?project=${safeProjectName}`
+            )
+          );
+          console.log(
+            chalk.blue("- Click Deploy on the Clerk Production Instance")
+          );
+          return rlp(`Press enter when done.`);
+        }
+        return Promise.resolve();
       },
     },
   ];
@@ -812,6 +820,7 @@ const main = ({ rootDirectory }: { rootDirectory: string }) => {
         return Promise.reject(result.message);
       }
     }
+    return { success: true as const, message: "" };
   };
 
   return run()

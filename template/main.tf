@@ -67,7 +67,7 @@ provider "github" {
 
 module "aws_static_site" {
   source  = "dvargas92495/static-site/aws"
-  version = "3.5.2"
+  version = "3.6.1"
 
   origin_memory_size = 5120
   origin_timeout = 20
@@ -87,15 +87,7 @@ module "aws-serverless-backend" {
     domain    = "{{{projectName}}}"
     directory = "api"
 }
-
-module "aws_clerk" {
-  source   = "dvargas92495/clerk/aws"
-  version  = "1.0.4"
-
-  zone_id  = module.aws_static_site.route53_zone_id
-  clerk_id = "{{{CLERK_DNS_ID}}}"{{{tfClerk}}}
-}
-
+{{{tfClerk}}}
 resource "github_actions_secret" "deploy_aws_access_key" {
   repository       = "{{{projectName}}}"
   secret_name      = "DEPLOY_AWS_ACCESS_KEY"

@@ -10,5 +10,6 @@
     "outDir": "./dist",
     "module": "commonjs"
   },
-  "exclude": ["./template"]
+  "exclude": ["./template"],
+  "include": ["./index.ts", "./template/remix.init/index.ts"]
 }
