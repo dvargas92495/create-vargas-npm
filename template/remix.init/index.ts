@@ -437,53 +437,88 @@ module "aws_clerk" {
     {
       title: "Git init",
       task: () => {
-        return sync("git init", { stdio: "ignore" });
+        try {
+          process.chdir(rootDirectory);
+          return sync("git init", { stdio: "ignore" });
+        } catch (e) {
+          console.log(chalk.red("Failed to git init"));
+          console.log(e);
+          return Promise.resolve();
+        }
       },
     },
     {
       title: "Git add",
       task: () => {
-        return sync("git add -A", { stdio: "ignore" });
+        try {
+          process.chdir(rootDirectory);
+          return sync("git add -A", { stdio: "ignore" });
+        } catch (e) {
+          console.log(chalk.red("Failed to git init"));
+          console.log(e);
+          return Promise.resolve();
+        }
       },
     },
     {
       title: "Git commit",
       task: () => {
-        return sync('git commit -m "Initial commit from Remix Fuego Stack"', {
-          stdio: "ignore",
-        });
+        try {
+          process.chdir(rootDirectory);
+          return sync('git commit -m "Initial commit from Remix Fuego Stack"', {
+            stdio: "ignore",
+          });
+        } catch (e) {
+          console.log(chalk.red("Failed to git init"));
+          console.log(e);
+          return Promise.resolve();
+        }
       },
     },
     {
       title: "Git remote",
       task: () => {
-        return new Promise<void>((resolve, reject) => {
-          const child = spawn(
-            "git",
-            [
-              "remote",
-              "add",
-              "origin",
-              `https://github.com/dvargas92495/${projectName}.git`,
-            ],
-            {
-              stdio: "inherit",
-            }
-          );
-          child.on("close", (code) => {
-            if (code !== 0) {
-              reject(code);
-              return;
-            }
-            resolve();
+        try {
+          process.chdir(rootDirectory);
+          return new Promise<void>((resolve, reject) => {
+            const child = spawn(
+              "git",
+              [
+                "remote",
+                "add",
+                "origin",
+                `https://github.com/dvargas92495/${projectName}.git`,
+              ],
+              {
+                stdio: "inherit",
+              }
+            );
+            child.on("close", (code) => {
+              if (code !== 0) {
+                reject(code);
+                return;
+              }
+              resolve();
+            });
           });
-        });
+        } catch (e) {
+          console.log(chalk.red("Failed to git init"));
+          console.log(e);
+          return Promise.resolve();
+        }
       },
     },
     {
       title: "Git push",
       task: () => {
-        return sync(`git push origin main`, { stdio: "ignore" });
+        try {
+          process.chdir(rootDirectory);
+          return sync(`git push origin main`, { stdio: "ignore" });
+        } catch (e) {
+          console.log(chalk.red("Failed to git init"));
+          console.log(e);
+          return Promise.resolve();
+        }
       },
     },
     {
@@ -727,13 +762,13 @@ module "aws_clerk" {
           fs.writeFileSync(
             ".env",
             `API_URL=http://localhost:3003
-  CLERK_API_KEY=${process.env.CLERK_DEV_API_KEY}
-  CLERK_FRONTEND_API=${process.env.CLERK_DEV_FRONTEND_API}
-  DATABASE_URL=mysql://${mysqlName}:${mysqlName}@localhost:5432/${mysqlName}
-  HOST=http://localhost:3000
-  STRIPE_PUBLIC_KEY=${process.env.TEST_STRIPE_PUBLIC}
-  STRIPE_SECRET_KEY=${process.env.TEST_STRIPE_SECRET}
-  STRIPE_WEBHOOK_SECRET=${process.env.TEST_STRIPE_WEBHOOK_SECRET}
+CLERK_API_KEY=${process.env.CLERK_DEV_API_KEY}
+CLERK_FRONTEND_API=${process.env.CLERK_DEV_FRONTEND_API}
+DATABASE_URL=mysql://${mysqlName}:${mysqlName}@localhost:5432/${mysqlName}
+ORIGIN=http://localhost:3000
+STRIPE_PUBLIC_KEY=${process.env.TEST_STRIPE_PUBLIC}
+STRIPE_SECRET_KEY=${process.env.TEST_STRIPE_SECRET}
+STRIPE_WEBHOOK_SECRET=${process.env.TEST_STRIPE_WEBHOOK_SECRET}
   `
           )
         );
