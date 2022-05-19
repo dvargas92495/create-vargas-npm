@@ -1,5 +1,5 @@
 module.exports = {
-  content: ["./app/**/*.tsx", "./node_modules/@dvargas92495/ui/**/*.js"],
+  content: ["./app/**/*.tsx", "./node_modules/@dvargas92495/app/**/*.js"],
   theme: {
     extend: {},
   },

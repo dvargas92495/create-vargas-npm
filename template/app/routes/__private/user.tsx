@@ -1,13 +1,9 @@
 import React from "react";
 import { UserButton, useUser } from "@clerk/remix";
-import getMeta from "@dvargas92495/ui/utils/getMeta";
-import { Link, Outlet, useMatches } from "remix";
+import getMeta from "@dvargas92495/app/utils/getMeta";
+import { Link, Outlet, useMatches } from "@remix-run/react";
 
-const TABS = [
-  { id: "page" },
-  { id: "tab" },
-  { id: "hello" },
-];
+const TABS = [{ id: "page" }, { id: "tab" }, { id: "hello" }];
 
 const UserPage: React.FunctionComponent = () => {
   const user = useUser();

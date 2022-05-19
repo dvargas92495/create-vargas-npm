@@ -21,13 +21,14 @@
     "@tailwindcss/forms": "0.5.0",
     "@types/aws-lambda": "8.10.84",
     "@types/node": "16.11.0",
-    "@types/react": "17.0.30",
-    "@types/react-dom": "17.0.9",
+    "@types/react": "18.0.5",
+    "@types/react-dom": "18.0.1",
+    "@types/uuid": "8.3.4",
     "@typescript-eslint/parser": "5.0.0",
     "@typescript-eslint/eslint-plugin": "5.0.0",
     "concurrently": "6.5.1",
     "eslint": "8.0.1",
-    "fuegojs": "0.25.8",
+    "fuegojs": "0.26.8",
     "prettier": "2.4.1",
     "tailwindcss": "3.0.24",
     "ts-node": "10.3.0",
@@ -36,7 +37,6 @@
     "typescript": "4.5.2"
   },
   "dependencies": {
-    "@dvargas92495/api": "0.7.10",
-    "@dvargas92495/ui": "0.52.6"
+    "@dvargas92495/app": "*"
   }
 }
